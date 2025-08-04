@@ -71,7 +71,8 @@ class Twilio:
 
 	def get_update_call_status_callback_url(self):
 		url_path = "/api/method/crm.integrations.twilio.api.update_call_status_info"
-		return get_public_url(url_path)
+		# return get_public_url(url_path)
+		return "https://hackajob-twilio.ngrok.dev/" + url_path
 
 	def generate_twilio_dial_response(self, from_number: str, to_number: str):
 		"""Generates voice call instructions to forward the call to agents Phone."""
