@@ -203,7 +203,7 @@ const props = defineProps({
   },
   subject: {
     type: String,
-    default: __('Email from Lead'),
+    default: '',
   },
   editorProps: {
     type: Object,

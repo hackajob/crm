@@ -116,16 +116,7 @@ const newEmailEditor = ref(null)
 const newCommentEditor = ref(null)
 const sendEmailRef = ref(null)
 const attachments = ref([])
-
-const subject = computed(() => {
-  let prefix = ''
-  if (doc.value?.lead_name) {
-    prefix = doc.value.lead_name
-  } else if (doc.value?.organization) {
-    prefix = doc.value.organization
-  }
-  return `${prefix} (#${doc.value.name})`
-})
+const subject = ref('')
 
 const signature = createResource({
   url: 'crm.api.get_user_signature',
