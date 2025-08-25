@@ -103,10 +103,27 @@ def get_filterable_fields(doctype: str):
 			field["name"] = field.get("fieldname")
 			res.append(field)
 
+	# Add Table MultiSelect child table Link fields (similar to Frappe Desk logic)
+	meta = frappe.get_meta(doctype)
+	for field in meta.fields:
+		if field.fieldtype == "Table MultiSelect" and field.options:
+			child_meta = frappe.get_meta(field.options)
+			# Find the Link field in child table
+			link_field = next((f for f in child_meta.fields if f.fieldtype == "Link"), None)
+			if link_field:
+				# Add as filterable field
+				res.append({
+					"label": f"{_(field.label)}",
+					"fieldname": f"{field.fieldname}.{link_field.fieldname}",
+					"fieldtype": "Link",
+					"options": link_field.options,
+					"name": f"{field.fieldname}.{link_field.fieldname}",
+					"value": f"{field.fieldname}.{link_field.fieldname}",
+				})
+
 	for field in res:
 		field["label"] = _(field.get("label"))
 		field["value"] = field.get("fieldname")
-
 	return res
 
 
@@ -315,6 +332,76 @@ def get_data(
 	if default_filters:
 		default_filters = frappe.parse_json(default_filters)
 		filters.update(default_filters)
+
+	# Handle child table filters (Table MultiSelect fields)
+	processed_filters = {}
+	child_table_filters = {}
+	
+	for key, value in filters.items():
+		if "." in key:
+			# This is a child table filter like "candidate_match_title.value"
+			parent_field, child_field = key.split(".", 1)
+			if parent_field not in child_table_filters:
+				child_table_filters[parent_field] = {}
+			child_table_filters[parent_field][child_field] = value
+		else:
+			processed_filters[key] = value
+	
+	# Convert child table filters to proper format
+	meta = frappe.get_meta(doctype)
+	for parent_field, child_filters in child_table_filters.items():
+		field_meta = meta.get_field(parent_field)
+		if field_meta and field_meta.fieldtype == "Table MultiSelect":
+			child_doctype = field_meta.options
+			for child_field, child_value in child_filters.items():
+				# Get parent records that have matching child records
+				if isinstance(child_value, list):
+					operator, value = child_value[0], child_value[1]
+				else:
+					operator, value = "=", child_value
+				
+				# For AND operation with multiple values
+				if operator == "in" and isinstance(value, list):
+					# Find candidates that have ALL the selected match titles
+					parent_names_sets = []
+					for single_value in value:
+						child_records = frappe.get_all(
+							child_doctype,
+							filters={child_field: single_value, "parenttype": doctype},
+							fields=["parent"],
+							distinct=True
+						)
+						if child_records:
+							parent_names_sets.append(set(r.parent for r in child_records))
+						else:
+							# If any value has no matches, intersection will be empty
+							parent_names_sets.append(set())
+					
+					# Find intersection (candidates that have ALL selected titles)
+					if parent_names_sets:
+						intersection = parent_names_sets[0]
+						for name_set in parent_names_sets[1:]:
+							intersection = intersection.intersection(name_set)
+						
+						if intersection:
+							processed_filters["name"] = ["in", list(intersection)]
+						else:
+							# No candidates have all the selected titles
+							processed_filters["name"] = ["in", []]
+				else:
+					# For single value or other operators, use original logic
+					child_records = frappe.get_all(
+						child_doctype,
+						filters={child_field: [operator, value], "parenttype": doctype},
+						fields=["parent"],
+						distinct=True
+					)
+					
+					if child_records:
+						parent_names = [r.parent for r in child_records]
+						processed_filters["name"] = ["in", parent_names]
+	
+	filters = processed_filters
 
 	is_default = True
 	data = []
