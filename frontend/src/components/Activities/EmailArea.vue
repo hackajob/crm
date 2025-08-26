@@ -48,7 +48,7 @@
       </div>
     </div>
     <div class="flex flex-col gap-1 text-base leading-5 text-ink-gray-8">
-      <div>{{ activity.data.subject }}</div>
+      <div v-if="!hideSubject">{{ activity.data.subject }}</div>
       <div>
         <span class="mr-1 text-ink-gray-5"> {{ __('To') }}: </span>
         <span>{{ activity.data.recipients }}</span>
@@ -88,6 +88,7 @@ import { computed } from 'vue'
 const props = defineProps({
   activity: Object,
   emailBox: Object,
+  hideSubject: { type: Boolean, default: false },
 })
 
 function reply(email, reply_all = false) {

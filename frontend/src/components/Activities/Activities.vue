@@ -108,8 +108,23 @@
           @reload="all_activities.reload() && scroll()"
         />
       </div>
+      <!-- Emails threaded view -->
+      <div v-else-if="title == 'Emails'" class="px-3 sm:px-10">
+        <div v-for="thread in emailThreads" :key="thread.subject" class="activity">
+          <div class="grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4">
+            <div class="relative flex justify-center before:absolute before:left-[50%] before:top-0 before:-z-10 before:border-l before:border-outline-gray-modals before:h-full">
+              <div class="z-10 flex h-8 w-7 items-center justify-center bg-surface-white">
+                <UserAvatar :user="thread.items[thread.items.length - 1].data.sender" size="md" />
+              </div>
+            </div>
+            <div class="pb-5 mt-px w-full">
+              <EmailThread :thread="thread" :emailBox="emailBox" />
+            </div>
+          </div>
+        </div>
+      </div>
       <div
-        v-else
+  v-else-if="title != 'Emails'"
         v-for="(activity, i) in activities"
         class="activity px-3 sm:px-10"
         :class="
@@ -364,6 +379,21 @@
           </div>
         </div>
       </div>
+      <!-- Threaded emails block -->
+      <div v-else class="px-3 sm:px-10">
+        <div v-for="thread in emailThreads" :key="thread.subject" class="activity">
+          <div class="grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4">
+            <div class="relative flex justify-center before:absolute before:left-[50%] before:top-0 before:-z-10 before:border-l before:border-outline-gray-modals before:h-full">
+              <div class="z-10 flex h-8 w-7 items-center justify-center bg-surface-white">
+                <UserAvatar :user="thread.items[thread.items.length - 1].data.sender" size="md" />
+              </div>
+            </div>
+            <div class="pb-5 mt-px w-full">
+              <EmailThread :thread="thread" :emailBox="emailBox" />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     <div v-else-if="title == 'Data'" class="h-full flex flex-col px-3 sm:px-10">
       <DataFields
@@ -453,6 +483,7 @@
 <script setup>
 import ActivityHeader from '@/components/Activities/ActivityHeader.vue'
 import EmailArea from '@/components/Activities/EmailArea.vue'
+import EmailThread from '@/components/Activities/EmailThread.vue'
 import CommentArea from '@/components/Activities/CommentArea.vue'
 import CallArea from '@/components/Activities/CallArea.vue'
 import NoteArea from '@/components/Activities/NoteArea.vue'
@@ -668,6 +699,34 @@ const activities = computed(() => {
     }
   })
   return sortByCreation(_activities)
+})
+
+// Group emails by normalized subject for threaded view
+const emailThreads = computed(() => {
+  if (title.value !== 'Emails') return []
+  const comms = activities.value
+  const normalize = (s = '') =>
+    s
+      .replace(/^\s*/g, '')
+      .replace(/^(re|fw|fwd):\s*/gi, '')
+      .trim()
+  const map = new Map()
+  for (const a of comms) {
+    const subj = normalize(a.data?.subject || a.subject || '') || '(no subject)'
+    if (!map.has(subj)) map.set(subj, [])
+    map.get(subj).push(a)
+  }
+  const threads = []
+  for (const [subject, items] of map.entries()) {
+    items.sort((x, y) => new Date(x.creation) - new Date(y.creation))
+    threads.push({ subject, items })
+  }
+  threads.sort(
+    (A, B) =>
+      new Date(A.items[A.items.length - 1].creation) -
+      new Date(B.items[B.items.length - 1].creation),
+  )
+  return threads
 })
 
 function sortByCreation(list) {
