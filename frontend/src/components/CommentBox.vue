@@ -45,11 +45,12 @@
               v-slot="{ togglePopover }"
               @update:modelValue="() => appendEmoji()"
             >
-              <Button variant="ghost" @click="togglePopover()">
-                <template #icon>
-                  <SmileIcon class="h-4" />
-                </template>
-              </Button>
+              <Button
+                :tooltip="__('Insert Emoji')"
+                :icon="SmileIcon"
+                variant="ghost"
+                @click="togglePopover()"
+              />
             </IconPicker>
             <FileUploader
               :upload-args="{
@@ -61,14 +62,11 @@
             >
               <template #default="{ openFileSelector }">
                 <Button
-                  theme="gray"
+                  :tooltip="__('Attach a file')"
                   variant="ghost"
+                  :icon="AttachmentIcon"
                   @click="openFileSelector()"
-                >
-                  <template #icon>
-                    <AttachmentIcon class="h-4" />
-                  </template>
-                </Button>
+                />
               </template>
             </FileUploader>
           </div>
@@ -94,7 +92,7 @@ import { usersStore } from '@/stores/users'
 import { TextEditorBubbleMenu, TextEditor, FileUploader } from 'frappe-ui'
 import { capture } from '@/telemetry'
 import { EditorContent } from '@tiptap/vue-3'
-import { ref, computed, defineModel } from 'vue'
+import { ref, computed } from 'vue'
 
 const props = defineProps({
   placeholder: {
@@ -149,7 +147,7 @@ function removeAttachment(attachment) {
 
 const users = computed(() => {
   return (
-    usersList.data
+    usersList.data?.crmUsers
       ?.filter((user) => user.enabled)
       .map((user) => ({
         label: user.full_name.trimEnd(),

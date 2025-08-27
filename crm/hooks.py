@@ -132,7 +132,6 @@ before_uninstall = "crm.uninstall.before_uninstall"
 override_doctype_class = {
 	"Contact": "crm.overrides.contact.CustomContact",
 	"Email Template": "crm.overrides.email_template.CustomEmailTemplate",
-	"User": "crm.overrides.user.CustomUser",
 }
 
 # Document Events
@@ -161,6 +160,7 @@ doc_events = {
 	},
 	"User": {
 		"before_validate": ["crm.api.demo.validate_user"],
+		"validate_reset_password": ["crm.api.demo.validate_reset_password"],
 	},
 	"Communication": {
 		"before_insert": "crm.api.communication.before_insert",
@@ -273,22 +273,6 @@ standard_dropdown_items = [
 		"is_standard": 1,
 	},
 	{
-		"name1": "support_link",
-		"label": "Support",
-		"type": "Route",
-		"icon": "life-buoy",
-		"route": "https://t.me/frappecrm",
-		"is_standard": 1,
-	},
-	{
-		"name1": "docs_link",
-		"label": "Docs",
-		"type": "Route",
-		"icon": "book-open",
-		"route": "https://docs.frappe.io/crm",
-		"is_standard": 1,
-	},
-	{
 		"name1": "toggle_theme",
 		"label": "Toggle theme",
 		"type": "Route",
@@ -301,7 +285,22 @@ standard_dropdown_items = [
 		"label": "Settings",
 		"type": "Route",
 		"icon": "settings",
-  		"route": "#",
+		"route": "#",
+		"is_standard": 1,
+	},
+	{
+		"name1": "login_to_fc",
+		"label": "Login to Frappe Cloud",
+		"type": "Route",
+		"route": "#",
+		"is_standard": 1,
+	},
+	{
+		"name1": "about",
+		"label": "About",
+		"type": "Route",
+		"icon": "info",
+		"route": "#",
 		"is_standard": 1,
 	},
 	{
@@ -315,7 +314,7 @@ standard_dropdown_items = [
 		"label": "Log out",
 		"type": "Route",
 		"icon": "log-out",
-  		"route": "#",
+		"route": "#",
 		"is_standard": 1,
 	},
 ]

@@ -7,17 +7,6 @@
         : duplicateMode
           ? __('Duplicate View')
           : __('Create View'),
-      actions: [
-        {
-          label: editMode
-            ? __('Save Changes')
-            : duplicateMode
-              ? __('Duplicate')
-              : __('Create'),
-          variant: 'solid',
-          onClick: () => (editMode ? update() : create()),
-        },
-      ],
     }"
   >
     <template #body-content>
@@ -52,6 +41,21 @@
             __('SQL for custom advanced views.')
           "
           :disabled="!isManager()"
+        />
+      </div>
+    </template>
+    <template #actions>
+      <div class="flex justify-end">
+        <Button
+          variant="solid"
+          :label="
+            editMode
+              ? __('Save Changes')
+              : duplicateMode
+                ? __('Duplicate')
+                : __('Create')
+          "
+          @click="() => (editMode ? update() : create())"
         />
       </div>
     </template>

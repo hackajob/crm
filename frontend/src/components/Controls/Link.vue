@@ -10,6 +10,8 @@
       :size="attrs.size || 'sm'"
       :variant="attrs.variant"
       :placeholder="attrs.placeholder"
+      :disabled="attrs.disabled"
+      :placement="attrs.placement"
       :filterable="false"
     >
       <template #target="{ open, togglePopover }">
@@ -25,7 +27,19 @@
       </template>
 
       <template #item-label="{ active, selected, option }">
-        <slot name="item-label" v-bind="{ active, selected, option }" />
+        <slot name="item-label" v-bind="{ active, selected, option }">
+          <div v-if="option.description" class="flex flex-col gap-1">
+            <div class="flex-1 font-semibold truncate text-ink-gray-7">
+              {{ option.label }}
+            </div>
+            <div class="flex-1 text-sm truncate text-ink-gray-5">
+              {{ option.description }}
+            </div>
+          </div>
+          <div v-else class="flex-1 truncate text-ink-gray-7">
+            {{ option.label }}
+          </div>
+        </slot>
       </template>
 
       <template #footer="{ value, close }">
@@ -34,24 +48,18 @@
             variant="ghost"
             class="w-full !justify-start"
             :label="__('Create New')"
+            iconLeft="plus"
             @click="() => attrs.onCreate(value, close)"
-          >
-            <template #prefix>
-              <FeatherIcon name="plus" class="h-4" />
-            </template>
-          </Button>
+          />
         </div>
         <div>
           <Button
             variant="ghost"
             class="w-full !justify-start"
             :label="__('Clear')"
+            iconLeft="x"
             @click="() => clearValue(close)"
-          >
-            <template #prefix>
-              <FeatherIcon name="x" class="h-4" />
-            </template>
-          </Button>
+          />
         </div>
       </template>
     </Autocomplete>
@@ -70,7 +78,7 @@ const props = defineProps({
     required: true,
   },
   filters: {
-    type: [Array, String],
+    type: [Array, Object, String],
     default: [],
   },
   modelValue: {
@@ -121,7 +129,7 @@ watchDebounced(
 
 const options = createResource({
   url: 'frappe.desk.search.search_link',
-  cache: [props.doctype, text.value, props.hideMe],
+  cache: [props.doctype, text.value, props.hideMe, props.filters],
   method: 'POST',
   params: {
     txt: text.value,
@@ -131,8 +139,9 @@ const options = createResource({
   transform: (data) => {
     let allData = data.map((option) => {
       return {
-        label: option.value,
+        label: option.label || option.value,
         value: option.value,
+        description: option.description,
       }
     })
     if (!props.hideMe && props.doctype == 'User') {
@@ -146,6 +155,7 @@ const options = createResource({
 })
 
 function reload(val) {
+  if (!props.doctype) return
   if (
     options.data?.length &&
     val === options.params?.txt &&
