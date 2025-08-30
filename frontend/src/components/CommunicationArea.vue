@@ -92,6 +92,11 @@ import { useStorage } from '@vueuse/core'
 import { call, createResource } from 'frappe-ui'
 import { useOnboarding } from 'frappe-ui/frappe'
 import { ref, watch, computed } from 'vue'
+import {
+  hasSignature,
+  appendSignatureToHTML,
+  trimTrailingEmptyParas,
+} from '@/utils/signature'
 
 const props = defineProps({
   doctype: {
@@ -140,109 +145,37 @@ function normalizeHref(href) {
 }
 
 function setSignature(editor) {
-  if (!signature.data) return
+  if (!signature?.data) return
 
-  // Avoid duplicates: only insert when empty
-  let emailContent = editor.getHTML() || ''
-  emailContent = emailContent.startsWith('<p></p>') ? emailContent.slice(7) : emailContent
-  const isEmpty = !emailContent || emailContent === '<p></p>'
-  if (!isEmpty) {
+  let base = editor.getHTML() || ''
+  base = trimTrailingEmptyParas(base)
+
+  if (!!base) {
+    editor.commands.focus('start')
+    return
+  }
+  // Already has a signature? Do nothing.
+  if (hasSignature(base)) {
     editor.commands.focus('start')
     return
   }
 
-  let raw = String(signature.data).replace(/\n/g, '<br>')
-  try {
-    const parser = new DOMParser()
-    const parsed = parser.parseFromString(raw, 'text/html')
-    const ql = parsed.querySelector('.ql-editor')
-    const container = document.createElement('div')
-    container.innerHTML = ql ? ql.innerHTML : parsed.body.innerHTML
+  // Append cleaned signature with exactly two blank lines before it
+  const { html, imgNodes } = appendSignatureToHTML(base, signature.data)
 
-    // Unwrap invalid p>div nesting
-    container.innerHTML = container.innerHTML.replace(
-      /<p[^>]*>\s*<div[^>]*>([\s\S]*?)<\/div>\s*<\/p>/gi,
-      '$1'
-    )
-
-    // Absolutize img src and collect attrs for fallback
-    const imgNodes = []
-    container.querySelectorAll('img').forEach((img) => {
-      const src = img.getAttribute('src') || ''
-      const isAbs = /^(?:[a-z]+:)?\/\//i.test(src) || src.startsWith('data:') || src.startsWith('cid:')
-      const absolute = isAbs ? src : new URL(src, window.location.origin).href
-      if (absolute !== src) img.setAttribute('src', absolute)
-      imgNodes.push({
-        src: absolute,
-        alt: img.getAttribute('alt') || null,
-        title: img.getAttribute('title') || null,
-        width: img.getAttribute('width') || null,
-        height: img.getAttribute('height') || null,
-        style: img.getAttribute('style') || null,
-        class: img.getAttribute('class') || null,
-      })
+  editor.commands.setContent(html)
+  const hasImg = /<img\b/i.test(editor.getHTML())
+  if (!hasImg && imgNodes.length) {
+    imgNodes.forEach(({ src, alt, width, height, style, class: klass }) => {
+      const attrs = { src }
+      if (alt) attrs.alt = alt
+      if (width) attrs.width = width
+      if (height) attrs.height = height
+      if (style) attrs.style = style
+      if (klass) attrs.class = klass
+      editor.commands.insertContent({ type: 'image', attrs })
     })
-
-    // Normalize all links
-    container.querySelectorAll('a').forEach((a) => {
-      const href = a.getAttribute('href') || ''
-      const normalized = normalizeHref(href)
-      if (normalized) a.setAttribute('href', normalized)
-      a.setAttribute('target', '_blank')
-      const rel = new Set((a.getAttribute('rel') || '').split(/\s+/).filter(Boolean))
-      rel.add('noopener'); rel.add('noreferrer')
-      a.setAttribute('rel', Array.from(rel).join(' '))
-    })
-
-    // Remove stray <br>:
-    // - If a <p> contains only <br>/whitespace, keep it as an empty paragraph (<p></p>).
-    // - Otherwise, remove all <br> inside that <p>.
-    // - Also remove any <br> outside <p>.
-    container.querySelectorAll('p').forEach((p) => {
-      const nodes = Array.from(p.childNodes).filter(
-        (n) => !(n.nodeType === Node.TEXT_NODE && !n.textContent.trim())
-      )
-      const hasNonBr = nodes.some((n) => n.nodeName !== 'BR')
-      if (!hasNonBr) {
-        // Paragraph represents a blank line; normalize to <p></p>
-        p.innerHTML = ''
-      } else {
-        // Paragraph has content; remove embedded line breaks like "<p>...<br></p>"
-        p.querySelectorAll('br').forEach((br) => br.remove())
-      }
-    })
-    // Remove any <br> that lives outside paragraphs
-    container.querySelectorAll('br').forEach((br) => {
-      if (!br.closest('p')) br.remove()
-    })
-
-    // Normalize empty lines to <p></p> (defensive, after the cleanup above)
-    let cleaned = container.innerHTML.replace(/<p>\s*<br\s*\/?>\s*<\/p>/gi, '<p></p>')
-
-    // Exactly two blank lines before signature
-    const twoBlank = '<p></p><p></p>'
-    const wrappedSignature = `<div class="signature" data-signature="true">${cleaned}</div>`
-
-    editor.commands.setContent(`${twoBlank}${wrappedSignature}`)
-
-    // Fallback: if editor dropped <img>, re-insert as nodes (preserves size attrs)
-    const hasImg = /<img\b/i.test(editor.getHTML())
-    if (!hasImg && imgNodes.length) {
-      imgNodes.forEach(({ src, alt, width, height, style, class: klass }) => {
-        const attrs = { src }
-        if (alt) attrs.alt = alt
-        if (width) attrs.width = width
-        if (height) attrs.height = height
-        if (style) attrs.style = style
-        if (klass) attrs.class = klass
-        editor.commands.insertContent({ type: 'image', attrs })
-      })
-    }
-  } catch {
-    const twoBlank = '<p></p><p></p>'
-    editor.commands.setContent(`${twoBlank}<div class="signature" data-signature="true">${raw}</div>`)
   }
-
   editor.commands.focus('start')
 }
 
