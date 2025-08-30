@@ -14,7 +14,7 @@
     }"
     :placeholder="placeholder"
     :editable="editable"
-    :extensions="[CustomParagraph]"
+  :extensions="[CustomParagraph, Image]"
   >
     <template #top>
       <div class="flex flex-col gap-3">
@@ -185,6 +185,7 @@ import { TextEditorBubbleMenu, TextEditor, FileUploader, call } from 'frappe-ui'
 import { capture } from '@/telemetry'
 import { validateEmail } from '@/utils'
 import Paragraph from '@tiptap/extension-paragraph'
+import { Image } from '@tiptap/extension-image'
 import { EditorContent } from '@tiptap/vue-3'
 import { ref, computed, nextTick } from 'vue'
 
@@ -349,3 +350,29 @@ const textEditorMenuButtons = [
   ],
 ]
 </script>
+
+<style>
+/* Hide the caption input field - Global styles to override component styles */
+[data-node-view-wrapper] input[placeholder="Add caption"] {
+  display: none !important;
+}
+
+/* Target by the exact class combination from your HTML */
+[data-node-view-wrapper] input.w-full.text-center.bg-transparent.text-sm.text-ink-gray-6.h-7.border-none.placeholder-ink-gray-4 {
+  display: none !important;
+}
+
+/* More general approach - hide any input in the image node wrapper */
+[data-node-view-wrapper] > div > input {
+  display: none !important;
+}
+
+/* Alternative using deep selector if scoped is needed */
+:deep([data-node-view-wrapper] input[placeholder="Add caption"]) {
+  display: none !important;
+}
+
+:deep([data-node-view-wrapper] input.placeholder-ink-gray-4) {
+  display: none !important;
+}
+</style>

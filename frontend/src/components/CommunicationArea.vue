@@ -124,14 +124,103 @@ const signature = createResource({
   auto: true,
 })
 
+// Make hrefs absolute/safe
+function normalizeHref(href) {
+  if (!href) return ''
+  const s = href.trim()
+  if (/^(javascript|vbscript):/i.test(s)) return ''
+  if (/^data:(?!image\/)/i.test(s)) return ''
+  if (/^(https?:|ftp:|mailto:|tel:|cid:)/i.test(s)) return s
+  if (s.startsWith('//')) return `https:${s}`
+  if (s.startsWith('/')) {
+    try { return new URL(s, window.location.origin).href } catch { return s }
+  }
+  if (s.startsWith('#')) return s
+  return `https://${s.replace(/^https?:\/\//i, '')}`
+}
+
 function setSignature(editor) {
   if (!signature.data) return
-  signature.data = signature.data.replace(/\n/g, '<br>')
-  let emailContent = editor.getHTML()
-  emailContent = emailContent.startsWith('<p></p>')
-    ? emailContent.slice(7)
-    : emailContent
-  editor.commands.setContent(signature.data + emailContent)
+
+  // Avoid duplicates: only insert when empty
+  let emailContent = editor.getHTML() || ''
+  emailContent = emailContent.startsWith('<p></p>') ? emailContent.slice(7) : emailContent
+  const isEmpty = !emailContent || emailContent === '<p></p>'
+  if (!isEmpty) {
+    editor.commands.focus('start')
+    return
+  }
+
+  let raw = String(signature.data).replace(/\n/g, '<br>')
+  try {
+    const parser = new DOMParser()
+    const parsed = parser.parseFromString(raw, 'text/html')
+    const ql = parsed.querySelector('.ql-editor')
+    const container = document.createElement('div')
+    container.innerHTML = ql ? ql.innerHTML : parsed.body.innerHTML
+
+    // Unwrap invalid p>div nesting
+    container.innerHTML = container.innerHTML.replace(
+      /<p[^>]*>\s*<div[^>]*>([\s\S]*?)<\/div>\s*<\/p>/gi,
+      '$1'
+    )
+
+    // Absolutize img src and collect attrs for fallback
+    const imgNodes = []
+    container.querySelectorAll('img').forEach((img) => {
+      const src = img.getAttribute('src') || ''
+      const isAbs = /^(?:[a-z]+:)?\/\//i.test(src) || src.startsWith('data:') || src.startsWith('cid:')
+      const absolute = isAbs ? src : new URL(src, window.location.origin).href
+      if (absolute !== src) img.setAttribute('src', absolute)
+      imgNodes.push({
+        src: absolute,
+        alt: img.getAttribute('alt') || null,
+        title: img.getAttribute('title') || null,
+        width: img.getAttribute('width') || null,
+        height: img.getAttribute('height') || null,
+        style: img.getAttribute('style') || null,
+        class: img.getAttribute('class') || null,
+      })
+    })
+
+    // Normalize all links
+    container.querySelectorAll('a').forEach((a) => {
+      const href = a.getAttribute('href') || ''
+      const normalized = normalizeHref(href)
+      if (normalized) a.setAttribute('href', normalized)
+      a.setAttribute('target', '_blank')
+      const rel = new Set((a.getAttribute('rel') || '').split(/\s+/).filter(Boolean))
+      rel.add('noopener'); rel.add('noreferrer')
+      a.setAttribute('rel', Array.from(rel).join(' '))
+    })
+
+    // Normalize empty lines to <p></p> to avoid double breaks
+    let cleaned = container.innerHTML.replace(/<p>\s*<br\s*\/?>\s*<\/p>/gi, '<p></p>')
+
+    // Exactly two blank lines before signature
+    const twoBlank = '<p></p><p></p>'
+    const wrappedSignature = `<div class="signature" data-signature="true">${cleaned}</div>`
+
+    editor.commands.setContent(`${twoBlank}${wrappedSignature}`)
+
+    // Fallback: if editor dropped <img>, re-insert as nodes (preserves size attrs)
+    const hasImg = /<img\b/i.test(editor.getHTML())
+    if (!hasImg && imgNodes.length) {
+      imgNodes.forEach(({ src, alt, width, height, style, class: klass }) => {
+        const attrs = { src }
+        if (alt) attrs.alt = alt
+        if (width) attrs.width = width
+        if (height) attrs.height = height
+        if (style) attrs.style = style
+        if (klass) attrs.class = klass
+        editor.commands.insertContent({ type: 'image', attrs })
+      })
+    }
+  } catch {
+    const twoBlank = '<p></p><p></p>'
+    editor.commands.setContent(`${twoBlank}<div class="signature" data-signature="true">${raw}</div>`)
+  }
+
   editor.commands.focus('start')
 }
 
@@ -250,3 +339,21 @@ defineExpose({
   editor: newEmailEditor,
 })
 </script>
+
+<style>
+/* Remove extra margins added by the image node-view in the editor */
+.tiptap .signature .not-prose.my-6 {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.tiptap .signature [data-node-view-wrapper] {
+  margin: 0 !important;
+}
+
+/* Keep image width from the signature and don't constrain it */
+.tiptap .signature img {
+  max-width: none;
+  height: auto;
+}
+</style>
