@@ -188,6 +188,11 @@ import Paragraph from '@tiptap/extension-paragraph'
 import { Image } from '@tiptap/extension-image'
 import { EditorContent } from '@tiptap/vue-3'
 import { ref, computed, nextTick } from 'vue'
+import {
+  hasSignature,
+  appendSignatureToHTML,
+  trimTrailingEmptyParas,
+} from '@/utils/signature'
 
 const props = defineProps({
   placeholder: {
@@ -278,8 +283,38 @@ async function applyEmailTemplate(template) {
   }
 
   if (template.response) {
-    content.value = data.message
-    editor.value.commands.setContent(data.message)
+    let base = data.message || ''
+    
+    base = trimTrailingEmptyParas(base)
+
+    // Append cleaned signature only if the template doesn't include one
+    let imgNodes = []
+    const hasSig = hasSignature(base)
+    if (!hasSig) {
+      const userSig = await call('crm.api.get_user_signature')
+      if (userSig) {
+        const res = appendSignatureToHTML(base, userSig)
+        base = res.html
+        imgNodes = res.imgNodes || []
+      }
+    }
+
+    content.value = base
+    editor.value.commands.setContent(base)
+
+    // Fallback: if schema drops <img>, insert image nodes with preserved attrs
+    const hasImg = /<img\b/i.test(editor.value.getHTML())
+    if (!hasImg && imgNodes.length) {
+      imgNodes.forEach(({ src, alt, width, height, style, class: klass }) => {
+        const attrs = { src }
+        if (alt) attrs.alt = alt
+        if (width) attrs.width = width
+        if (height) attrs.height = height
+        if (style) attrs.style = style
+        if (klass) attrs.class = klass
+        editor.value.commands.insertContent({ type: 'image', attrs })
+      })
+    }
   }
   showEmailTemplateSelectorModal.value = false
   capture('email_template_applied', { doctype: props.doctype })
