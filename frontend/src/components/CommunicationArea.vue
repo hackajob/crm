@@ -194,7 +194,29 @@ function setSignature(editor) {
       a.setAttribute('rel', Array.from(rel).join(' '))
     })
 
-    // Normalize empty lines to <p></p> to avoid double breaks
+    // Remove stray <br>:
+    // - If a <p> contains only <br>/whitespace, keep it as an empty paragraph (<p></p>).
+    // - Otherwise, remove all <br> inside that <p>.
+    // - Also remove any <br> outside <p>.
+    container.querySelectorAll('p').forEach((p) => {
+      const nodes = Array.from(p.childNodes).filter(
+        (n) => !(n.nodeType === Node.TEXT_NODE && !n.textContent.trim())
+      )
+      const hasNonBr = nodes.some((n) => n.nodeName !== 'BR')
+      if (!hasNonBr) {
+        // Paragraph represents a blank line; normalize to <p></p>
+        p.innerHTML = ''
+      } else {
+        // Paragraph has content; remove embedded line breaks like "<p>...<br></p>"
+        p.querySelectorAll('br').forEach((br) => br.remove())
+      }
+    })
+    // Remove any <br> that lives outside paragraphs
+    container.querySelectorAll('br').forEach((br) => {
+      if (!br.closest('p')) br.remove()
+    })
+
+    // Normalize empty lines to <p></p> (defensive, after the cleanup above)
     let cleaned = container.innerHTML.replace(/<p>\s*<br\s*\/?>\s*<\/p>/gi, '<p></p>')
 
     // Exactly two blank lines before signature
