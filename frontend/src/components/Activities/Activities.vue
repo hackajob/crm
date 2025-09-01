@@ -8,6 +8,7 @@
     :doc="doc"
     :emailBox="emailBox"
     :whatsappBox="whatsappBox"
+    :smsBox="smsBox"
     :modalRef="modalRef"
   />
   <FadedScrollableDiv
@@ -184,11 +185,30 @@
             />
           </div>
         </div>
-        <div
-          v-if="activity.activity_type == 'communication'"
-          class="pb-5 mt-px"
-        >
-          <EmailArea :activity="activity" :emailBox="emailBox" />
+        <div v-if="activity.activity_type == 'communication'" class="pb-5 mt-px">
+          <template v-if="activity.data?.communication_medium === 'SMS'">
+            <div class="cursor-pointer flex flex-col rounded-md shadow bg-surface-cards px-3 py-1.5 text-base">
+              <div class="-mb-0.5 flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2 truncate text-ink-gray-9">
+                  <span>
+                    {{
+                      activity.data.sender_full_name === currentUser.full_name
+                        ? __('You')
+                        : activity.data.sender_full_name || activity.data.sender || __('You')
+                    }}
+                  </span>
+                </div>
+                <Tooltip :text="formatDate(activity.communication_date || activity.creation)">
+                  <div class="text-sm text-ink-gray-5">
+                    {{ __(timeAgo(activity.communication_date || activity.creation)) }}
+                  </div>
+                </Tooltip>
+              </div>
+              <div class="border-0 border-t mt-3 mb-1 border-outline-gray-modals" />
+              <div class="text-ink-gray-8 whitespace-pre-wrap">{{ activity.data.content }}</div>
+            </div>
+          </template>
+          <EmailArea v-else :activity="activity" :emailBox="emailBox" />
         </div>
         <div
           class="mb-4"
@@ -455,6 +475,13 @@
       :doctype="doctype"
       @scroll="scroll"
     />
+    <SmsBox
+      ref="smsBox"
+      v-if="title == 'SMS'"
+      v-model="doc"
+      :doctype="doctype"
+  @sent="() => { all_activities.reload(); scroll() }"
+    />
   </div>
   <WhatsappTemplateSelectorModal
     v-if="whatsappEnabled"
@@ -501,6 +528,8 @@ import AttachmentIcon from '@/components/Icons/AttachmentIcon.vue'
 import WhatsAppIcon from '@/components/Icons/WhatsAppIcon.vue'
 import WhatsAppArea from '@/components/Activities/WhatsAppArea.vue'
 import WhatsAppBox from '@/components/Activities/WhatsAppBox.vue'
+import SmsBox from '@/components/Activities/SmsBox.vue'
+import SmsIcon from '@/components/Icons/SmsIcon.vue'
 import LoadingIndicator from '@/components/Icons/LoadingIndicator.vue'
 import MultiActionButton from '@/components/MultiActionButton.vue'
 import LeadsIcon from '@/components/Icons/LeadsIcon.vue'
@@ -539,6 +568,7 @@ import { useRoute } from 'vue-router'
 
 const { makeCall, $socket } = globalStore()
 const { getUser } = usersStore()
+const currentUser = computed(() => getUser() || {})
 
 const props = defineProps({
   doctype: {
@@ -606,6 +636,7 @@ const whatsappMessages = createResource({
 
 onBeforeUnmount(() => {
   $socket.off('whatsapp_message')
+  $socket.off('sms_message')
 })
 
 onMounted(() => {
@@ -615,6 +646,15 @@ onMounted(() => {
       data.reference_name === props.docname
     ) {
       whatsappMessages.reload()
+    }
+  })
+
+  $socket.on('sms_message', (data) => {
+    if (
+      data.reference_doctype === props.doctype &&
+      data.reference_name === doc.value.data.name
+    ) {
+  all_activities.reload()
     }
   })
 
@@ -658,7 +698,17 @@ const activities = computed(() => {
   } else if (title.value == 'Emails') {
     if (!all_activities.data?.versions) return []
     _activities = all_activities.data.versions.filter(
-      (activity) => activity.activity_type === 'communication',
+      (activity) =>
+        activity.activity_type === 'communication' &&
+        (!activity.data?.communication_medium ||
+          activity.data?.communication_medium === 'Email'),
+    )
+  } else if (title.value == 'SMS') {
+    if (!all_activities.data?.versions) return []
+    _activities = all_activities.data.versions.filter(
+      (activity) =>
+        activity.activity_type === 'communication' &&
+        activity.data?.communication_medium === 'SMS',
     )
   } else if (title.value == 'Comments') {
     if (!all_activities.data?.versions) return []
@@ -775,6 +825,8 @@ const emptyText = computed(() => {
     text = 'No Attachments'
   } else if (title.value == 'WhatsApp') {
     text = 'No WhatsApp Messages'
+  } else if (title.value == 'SMS') {
+    text = 'No SMS Messages'
   }
   return text
 })
@@ -797,6 +849,8 @@ const emptyTextIcon = computed(() => {
     icon = AttachmentIcon
   } else if (title.value == 'WhatsApp') {
     icon = WhatsAppIcon
+  } else if (title.value == 'SMS') {
+    icon = SmsIcon
   }
   return h(icon, { class: 'text-ink-gray-4' })
 })
@@ -831,6 +885,7 @@ function timelineIcon(activity_type, is_lead) {
 
 const emailBox = ref(null)
 const whatsappBox = ref(null)
+const smsBox = ref(null)
 
 watch([reload, reload_email], ([reload_value, reload_email_value]) => {
   if (reload_value || reload_email_value) {
