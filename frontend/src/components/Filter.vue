@@ -367,6 +367,17 @@ function getValueControl(f) {
   const { field, operator } = f
   const { fieldtype, options } = field
   if (operator == 'is') {
+    if (typeLink.includes(fieldtype) && options) {
+      return h(MultiSelectLink, {
+        doctype: options,
+        placeholder: `Select ${field.label}...`,
+        'onUpdate:modelValue': (val) => {
+          f.value = val
+          apply()
+        },
+        modelValue: f.value
+      })
+    }
     return h(FormControl, {
       type: 'select',
       options: [
@@ -531,6 +542,9 @@ function updateOperator(event, filter) {
     filter.value = getDefaultValue(filter.field)
   }
   if (newOperatorValue === 'is' || newOperatorValue === 'is not') {
+    if (typeLink.includes(fieldtype) && options) {
+      filter.value = []
+    }
     filter.value = 'set'
   }
   apply()

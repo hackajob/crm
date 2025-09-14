@@ -359,10 +359,26 @@ def get_data(
 					operator, value = child_value[0], child_value[1]
 				else:
 					operator, value = "=", child_value
-				
-				# For AND operation with multiple values
+
+				# Semantics change:
+				# * operator == "in" with list => OR (union) of parents having ANY selected value
+				# * operator == "is" with list => AND (intersection) of parents having ALL selected values
+				# * fallback (single value / other ops) => original behavior
 				if operator == "in" and isinstance(value, list):
-					# Find candidates that have ALL the selected match titles
+					# OR logic: collect all parents matching any value
+					union_set = set()
+					for single_value in value:
+						child_records = frappe.get_all(
+							child_doctype,
+							filters={child_field: single_value, "parenttype": doctype},
+							fields=["parent"],
+							distinct=True
+						)
+						for r in child_records:
+							union_set.add(r.parent)
+					processed_filters["name"] = ["in", list(union_set) or []]
+				elif operator == "is" and isinstance(value, list):
+					# AND logic moved here: parents must have all selected values
 					parent_names_sets = []
 					for single_value in value:
 						child_records = frappe.get_all(
@@ -374,29 +390,20 @@ def get_data(
 						if child_records:
 							parent_names_sets.append(set(r.parent for r in child_records))
 						else:
-							# If any value has no matches, intersection will be empty
 							parent_names_sets.append(set())
-					
-					# Find intersection (candidates that have ALL selected titles)
 					if parent_names_sets:
 						intersection = parent_names_sets[0]
 						for name_set in parent_names_sets[1:]:
 							intersection = intersection.intersection(name_set)
-						
-						if intersection:
-							processed_filters["name"] = ["in", list(intersection)]
-						else:
-							# No candidates have all the selected titles
-							processed_filters["name"] = ["in", []]
+						processed_filters["name"] = ["in", list(intersection) or []]
 				else:
-					# For single value or other operators, use original logic
+					# Single value or other operator
 					child_records = frappe.get_all(
 						child_doctype,
 						filters={child_field: [operator, value], "parenttype": doctype},
 						fields=["parent"],
 						distinct=True
 					)
-					
 					if child_records:
 						parent_names = [r.parent for r in child_records]
 						processed_filters["name"] = ["in", parent_names]
