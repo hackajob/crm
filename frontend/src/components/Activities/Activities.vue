@@ -124,8 +124,23 @@
           </div>
         </div>
       </div>
+      <!-- SMS threaded view (grouped by date) -->
+      <div v-else-if="title == 'SMS'" class="px-3 sm:px-10">
+        <div v-for="thread in smsThreads" :key="thread.date" class="activity">
+          <div class="grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4">
+            <div class="relative flex justify-center before:absolute before:left-[50%] before:top-0 before:-z-10 before:border-l before:border-outline-gray-modals before:h-full">
+              <div class="z-10 flex h-8 w-7 items-center justify-center bg-surface-white">
+                <UserAvatar :user="thread.items[thread.items.length - 1].data.sender" size="md" />
+              </div>
+            </div>
+            <div class="pb-5 mt-px w-full">
+              <SmsThread :thread="thread" />
+            </div>
+          </div>
+        </div>
+      </div>
       <div
-  v-else-if="title != 'Emails'"
+        v-else-if="title != 'Emails'"
         v-for="(activity, i) in activities"
         class="activity px-3 sm:px-10"
         :class="
@@ -511,6 +526,7 @@
 import ActivityHeader from '@/components/Activities/ActivityHeader.vue'
 import EmailArea from '@/components/Activities/EmailArea.vue'
 import EmailThread from '@/components/Activities/EmailThread.vue'
+import SmsThread from '@/components/Activities/SmsThread.vue'
 import CommentArea from '@/components/Activities/CommentArea.vue'
 import CallArea from '@/components/Activities/CallArea.vue'
 import NoteArea from '@/components/Activities/NoteArea.vue'
@@ -776,6 +792,26 @@ const emailThreads = computed(() => {
       new Date(A.items[A.items.length - 1].creation) -
       new Date(B.items[B.items.length - 1].creation),
   )
+  return threads
+})
+// Group SMS messages by date (YYYY-MM-DD portion of communication_date/creation)
+const smsThreads = computed(() => {
+  if (title.value !== 'SMS') return []
+  const comms = activities.value
+  const map = new Map()
+  for (const a of comms) {
+    const dt = a.communication_date || a.creation
+    if (!dt) continue
+    const dateKey = dt.slice(0, 10)
+    if (!map.has(dateKey)) map.set(dateKey, [])
+    map.get(dateKey).push(a)
+  }
+  const threads = []
+  for (const [date, items] of map.entries()) {
+    items.sort((x, y) => new Date(x.creation) - new Date(y.creation))
+    threads.push({ date, items })
+  }
+  threads.sort((A, B) => new Date(A.items[A.items.length - 1].creation) - new Date(B.items[B.items.length - 1].creation))
   return threads
 })
 
