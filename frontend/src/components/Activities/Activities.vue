@@ -109,7 +109,7 @@
           @reload="all_activities.reload() && scroll()"
         />
       </div>
-      <!-- Emails threaded view -->
+  <!-- Emails threaded view (Emails tab only) -->
       <div v-else-if="title == 'Emails'" class="px-3 sm:px-10">
         <div v-for="thread in emailThreads" :key="thread.subject" class="activity">
           <div class="grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4">
@@ -124,7 +124,7 @@
           </div>
         </div>
       </div>
-      <!-- SMS threaded view (grouped by date) -->
+  <!-- SMS threaded view (SMS tab only) -->
       <div v-else-if="title == 'SMS'" class="px-3 sm:px-10">
         <div v-for="thread in smsThreads" :key="thread.date" class="activity">
           <div class="grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4">
@@ -139,8 +139,77 @@
           </div>
         </div>
       </div>
+      <!-- Activity tab: threaded emails + SMS then other activities -->
+      <div v-else-if="title == 'Activity'" class="px-3 sm:px-10">
+        <!-- Threaded Emails in Activity -->
+        <div v-for="thread in emailThreads" :key="'act-email-' + thread.subject" class="activity">
+          <div class="grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4">
+            <div class="relative flex justify-center before:absolute before:left-[50%] before:top-0 before:-z-10 before:border-l before:border-outline-gray-modals before:h-full">
+              <div class="z-10 flex h-8 w-7 items-center justify-center bg-surface-white">
+                <UserAvatar :user="thread.items[thread.items.length - 1].data.sender" size="md" />
+              </div>
+            </div>
+            <div class="pb-5 mt-px w-full">
+              <EmailThread :thread="thread" :emailBox="emailBox" />
+            </div>
+          </div>
+        </div>
+        <!-- Threaded SMS in Activity -->
+        <div v-for="thread in smsThreads" :key="'act-sms-' + thread.date" class="activity">
+          <div class="grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4">
+            <div class="relative flex justify-center before:absolute before:left-[50%] before:top-0 before:-z-10 before:border-l before:border-outline-gray-modals before:h-full">
+              <div class="z-10 flex h-8 w-7 items-center justify-center bg-surface-white">
+                <UserAvatar :user="thread.items[thread.items.length - 1].data.sender" size="md" />
+              </div>
+            </div>
+            <div class="pb-5 mt-px w-full">
+              <SmsThread :thread="thread" />
+            </div>
+          </div>
+        </div>
+        <!-- Non-communication items (already filtered from emails/SMS) -->
+        <div v-for="(activity, i) in activities" :key="'act-rest-' + activity.name" class="activity" :class="'grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4'">
+          <div
+            class="z-0 relative flex justify-center before:absolute before:left-[50%] before:-z-[1] before:top-0 before:border-l before:border-outline-gray-modals"
+            :class="[i != activities.length - 1 ? 'before:h-full' : 'before:h-4']"
+          >
+            <div
+              class="flex h-7 w-7 items-center justify-center bg-surface-white"
+              :class="{
+                'mt-2.5': ['communication'].includes(activity.activity_type),
+                'bg-surface-white': ['added', 'removed', 'changed'].includes(activity.activity_type),
+                'h-8': ['comment','communication','incoming_call','outgoing_call'].includes(activity.activity_type),
+              }"
+            >
+              <UserAvatar
+                v-if="activity.activity_type == 'communication'"
+                :user="activity.data.sender"
+                size="md"
+              />
+              <MissedCallIcon
+                v-else-if="['incoming_call','outgoing_call'].includes(activity.activity_type) && activity.status == 'No Answer'"
+                class="text-ink-red-4"
+              />
+              <DeclinedCallIcon
+                v-else-if="['incoming_call','outgoing_call'].includes(activity.activity_type) && activity.status == 'Busy'"
+              />
+              <component
+                v-else
+                :is="activity.icon"
+                :class="['added','removed','changed'].includes(activity.activity_type) ? 'text-ink-gray-4' : 'text-ink-gray-8'"
+              />
+            </div>
+          </div>
+          <div v-if="activity.activity_type == 'comment'" class="pb-5 mt-px">
+            <CommentArea :activity="activity" />
+          </div>
+          <div v-else-if="activity.activity_type == 'attachment_log'" class="mb-4 flex flex-col gap-2 py-1.5">
+            <!-- existing attachment log rendering reused below -->
+          </div>
+        </div>
+      </div>
       <div
-        v-else-if="title != 'Emails'"
+        v-else-if="title != 'Emails' && title != 'SMS' && title != 'Activity'"
         v-for="(activity, i) in activities"
         class="activity px-3 sm:px-10"
         :class="
@@ -710,7 +779,13 @@ function get_activities() {
 const activities = computed(() => {
   let _activities = []
   if (title.value == 'Activity') {
-    _activities = get_activities()
+    // Start with base activities (versions + calls)
+    _activities = get_activities().filter((a) => {
+      if (a.activity_type !== 'communication') return true
+      const medium = a.data?.communication_medium || 'Email'
+      // Exclude Email & SMS communications from raw list; they will appear threaded
+      return !['Email', 'SMS'].includes(medium)
+    })
   } else if (title.value == 'Emails') {
     if (!all_activities.data?.versions) return []
     _activities = all_activities.data.versions.filter(
@@ -769,8 +844,20 @@ const activities = computed(() => {
 
 // Group emails by normalized subject for threaded view
 const emailThreads = computed(() => {
-  if (title.value !== 'Emails') return []
-  const comms = activities.value
+  // For Emails tab: activities already filtered to email communications
+  // For Activity tab: need to build from all versions since we filtered out in activities list
+  if (!['Emails', 'Activity'].includes(title.value)) return []
+  let comms
+  if (title.value === 'Emails') {
+    comms = activities.value
+  } else {
+    // Activity tab: build from versions list directly
+    comms = (all_activities.data?.versions || []).filter(
+      (a) =>
+        a.activity_type === 'communication' &&
+        (!a.data?.communication_medium || a.data?.communication_medium === 'Email'),
+    )
+  }
   const normalize = (s = '') =>
     s
       .replace(/^\s*/g, '')
@@ -796,8 +883,15 @@ const emailThreads = computed(() => {
 })
 // Group SMS messages by date (YYYY-MM-DD portion of communication_date/creation)
 const smsThreads = computed(() => {
-  if (title.value !== 'SMS') return []
-  const comms = activities.value
+  if (!['SMS', 'Activity'].includes(title.value)) return []
+  let comms
+  if (title.value === 'SMS') {
+    comms = activities.value
+  } else {
+    comms = (all_activities.data?.versions || []).filter(
+      (a) => a.activity_type === 'communication' && a.data?.communication_medium === 'SMS',
+    )
+  }
   const map = new Map()
   for (const a of comms) {
     const dt = a.communication_date || a.creation
