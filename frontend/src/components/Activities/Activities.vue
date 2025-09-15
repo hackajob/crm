@@ -139,78 +139,248 @@
           </div>
         </div>
       </div>
-      <!-- Activity tab: threaded emails + SMS then other activities -->
+      <!-- Activity tab unified timeline (threads + calls + other activities chronologically) -->
       <div v-else-if="title == 'Activity'" class="px-3 sm:px-10">
-        <!-- Threaded Emails in Activity -->
-        <div v-for="thread in emailThreads" :key="'act-email-' + thread.subject" class="activity">
-          <div class="grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4">
-            <div class="relative flex justify-center before:absolute before:left-[50%] before:top-0 before:-z-10 before:border-l before:border-outline-gray-modals before:h-full">
-              <div class="z-10 flex h-8 w-7 items-center justify-center bg-surface-white">
-                <UserAvatar :user="thread.items[thread.items.length - 1].data.sender" size="md" />
-              </div>
-            </div>
-            <div class="pb-5 mt-px w-full">
-              <EmailThread :thread="thread" :emailBox="emailBox" />
-            </div>
-          </div>
-        </div>
-        <!-- Threaded SMS in Activity -->
-        <div v-for="thread in smsThreads" :key="'act-sms-' + thread.date" class="activity">
-          <div class="grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4">
-            <div class="relative flex justify-center before:absolute before:left-[50%] before:top-0 before:-z-10 before:border-l before:border-outline-gray-modals before:h-full">
-              <div class="z-10 flex h-8 w-7 items-center justify-center bg-surface-white">
-                <UserAvatar :user="thread.items[thread.items.length - 1].data.sender" size="md" />
-              </div>
-            </div>
-            <div class="pb-5 mt-px w-full">
-              <SmsThread :thread="thread" />
-            </div>
-          </div>
-        </div>
-        <!-- Notes in Activity (cards layout similar to Notes tab basic) -->
-        <div v-if="activityNotes.length" class="grid grid-cols-1 gap-4 pb-3 sm:pb-5 lg:grid-cols-2 xl:grid-cols-3 mt-2">
-          <div v-for="note in activityNotes" :key="'act-note-' + note.name" @click="modalRef.showNote(note)">
-            <NoteArea :note="note" v-model="all_activities" />
-          </div>
-        </div>
-        <!-- Non-communication items (already filtered from emails/SMS) -->
-        <div v-for="(activity, i) in activities" :key="'act-rest-' + activity.name" class="activity" :class="'grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4'">
+        <div
+          v-for="(item, i) in activityTimeline"
+          :key="item.key"
+          class="activity grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4"
+        >
           <div
-            class="z-0 relative flex justify-center before:absolute before:left-[50%] before:-z-[1] before:top-0 before:border-l before:border-outline-gray-modals"
-            :class="[i != activities.length - 1 ? 'before:h-full' : 'before:h-4']"
+            class="relative flex justify-center before:absolute before:left-[50%] before:top-0 before:border-l before:border-outline-gray-modals"
+            :class="i != activityTimeline.length - 1 ? 'before:h-full' : 'before:h-4'"
           >
             <div
+              v-if="item.kind === 'email_thread' || item.kind === 'sms_thread'"
+              class="z-10 flex h-8 w-7 items-center justify-center bg-surface-white"
+            >
+              <UserAvatar :user="item.thread.items[item.thread.items.length - 1].data.sender" size="md" />
+            </div>
+            <div
+              v-else
               class="flex h-7 w-7 items-center justify-center bg-surface-white"
               :class="{
-                'mt-2.5': ['communication'].includes(activity.activity_type),
-                'bg-surface-white': ['added', 'removed', 'changed'].includes(activity.activity_type),
-                'h-8': ['comment','communication','incoming_call','outgoing_call'].includes(activity.activity_type),
+                'mt-2.5': ['communication'].includes(item.activity.activity_type),
+                'bg-surface-white': ['added','removed','changed'].includes(item.activity.activity_type),
+                'h-8': ['comment','communication','incoming_call','outgoing_call'].includes(item.activity.activity_type),
               }"
             >
               <UserAvatar
-                v-if="activity.activity_type == 'communication'"
-                :user="activity.data.sender"
+                v-if="item.activity.activity_type == 'communication'"
+                :user="item.activity.data.sender"
                 size="md"
               />
               <MissedCallIcon
-                v-else-if="['incoming_call','outgoing_call'].includes(activity.activity_type) && activity.status == 'No Answer'"
+                v-else-if="['incoming_call','outgoing_call'].includes(item.activity.activity_type) && item.activity.status == 'No Answer'"
                 class="text-ink-red-4"
               />
               <DeclinedCallIcon
-                v-else-if="['incoming_call','outgoing_call'].includes(activity.activity_type) && activity.status == 'Busy'"
+                v-else-if="['incoming_call','outgoing_call'].includes(item.activity.activity_type) && item.activity.status == 'Busy'"
               />
               <component
                 v-else
-                :is="activity.icon"
-                :class="['added','removed','changed'].includes(activity.activity_type) ? 'text-ink-gray-4' : 'text-ink-gray-8'"
+                :is="item.activity.icon"
+                :class="['added','removed','changed'].includes(item.activity.activity_type) ? 'text-ink-gray-4' : 'text-ink-gray-8'"
               />
             </div>
           </div>
-          <div v-if="activity.activity_type == 'comment'" class="pb-5 mt-px">
-            <CommentArea :activity="activity" />
+          <!-- Thread bodies -->
+          <div v-if="item.kind === 'email_thread'" class="pb-5 mt-px w-full">
+            <EmailThread :thread="item.thread" :emailBox="emailBox" />
           </div>
-          <div v-else-if="activity.activity_type == 'attachment_log'" class="mb-4 flex flex-col gap-2 py-1.5">
-            <!-- existing attachment log rendering reused below -->
+          <div v-else-if="item.kind === 'sms_thread'" class="pb-5 mt-px w-full">
+            <SmsThread :thread="item.thread" />
+          </div>
+          <!-- Activity types -->
+          <template v-else>
+            <!-- Call log -->
+            <div
+              v-if="['incoming_call','outgoing_call'].includes(item.activity.activity_type)"
+              class="mb-4 mt-px"
+            >
+              <CallArea :activity="item.activity" />
+            </div>
+            <!-- Comment -->
+            <div v-else-if="item.activity.activity_type == 'comment'" class="pb-5 mt-px">
+              <CommentArea :activity="item.activity" />
+            </div>
+            <!-- Attachment log -->
+            <div
+              v-else-if="item.activity.activity_type == 'attachment_log'"
+              class="mb-4 flex flex-col gap-2 py-1.5"
+            >
+              <div class="flex items-center justify-stretch gap-2 text-base">
+                <div class="inline-flex items-center flex-wrap gap-1.5 text-ink-gray-8 font-medium">
+                  <span class="font-medium">{{ item.activity.owner_name }}</span>
+                  <span class="text-ink-gray-5">{{ __(item.activity.data.type) }}</span>
+                  <a
+                    v-if="item.activity.data.file_url"
+                    :href="item.activity.data.file_url"
+                    target="_blank"
+                  >
+                    <span>{{ item.activity.data.file_name }}</span>
+                  </a>
+                  <span v-else>{{ item.activity.data.file_name }}</span>
+                  <FeatherIcon
+                    v-if="item.activity.data.is_private"
+                    name="lock"
+                    class="size-3"
+                  />
+                </div>
+                <div class="ml-auto whitespace-nowrap">
+                  <Tooltip :text="formatDate(item.activity.creation)">
+                    <div class="text-sm text-ink-gray-5">
+                      {{ __(timeAgo(item.activity.creation)) }}
+                    </div>
+                  </Tooltip>
+                </div>
+              </div>
+            </div>
+            <!-- Generic changes -->
+            <div v-else class="mb-4 flex flex-col gap-2 py-1.5">
+              <div class="flex items-center justify-stretch gap-2 text-base">
+                <div
+                  v-if="item.activity.other_versions"
+                  class="inline-flex flex-wrap gap-1.5 text-ink-gray-8 font-medium"
+                >
+                  <span>{{ item.activity.show_others ? __('Hide') : __('Show') }}</span>
+                  <span> +{{ item.activity.other_versions.length + 1 }} </span>
+                  <span>{{ __('changes from') }}</span>
+                  <span>{{ item.activity.owner_name }}</span>
+                  <Button
+                    class="!size-4"
+                    variant="ghost"
+                    :icon="SelectIcon"
+                    @click="item.activity.show_others = !item.activity.show_others"
+                  />
+                </div>
+                <div
+                  v-else
+                  class="inline-flex items-center flex-wrap gap-1 text-ink-gray-5"
+                >
+                  <span class="font-medium text-ink-gray-8">
+                    {{ item.activity.owner_name }}
+                  </span>
+                  <span v-if="item.activity.type">{{ __(item.activity.type) }}</span>
+                  <span
+                    v-if="item.activity.data?.field_label"
+                    class="max-w-xs truncate font-medium text-ink-gray-8"
+                  >
+                    {{ __(item.activity.data.field_label) }}
+                  </span>
+                  <span v-if="item.activity.value">{{ __(item.activity.value) }}</span>
+                  <span
+                    v-if="item.activity.data?.old_value"
+                    class="max-w-xs font-medium text-ink-gray-8"
+                  >
+                    <div
+                      class="flex items-center gap-1"
+                      v-if="item.activity.options == 'User'"
+                    >
+                      <UserAvatar :user="item.activity.data.old_value" size="xs" />
+                      {{ getUser(item.activity.data.old_value).full_name }}
+                    </div>
+                    <div class="truncate" v-else>
+                      {{ item.activity.data.old_value }}
+                    </div>
+                  </span>
+                  <span v-if="item.activity.to">{{ __('to') }}</span>
+                  <span
+                    v-if="item.activity.data?.value"
+                    class="max-w-xs font-medium text-ink-gray-8"
+                  >
+                    <div
+                      class="flex items-center gap-1"
+                      v-if="item.activity.options == 'User'"
+                    >
+                      <UserAvatar :user="item.activity.data.value" size="xs" />
+                      {{ getUser(item.activity.data.value).full_name }}
+                    </div>
+                    <div class="truncate" v-else>
+                      {{ item.activity.data.value }}
+                    </div>
+                  </span>
+                </div>
+
+                <div class="ml-auto whitespace-nowrap">
+                  <Tooltip :text="formatDate(item.activity.creation)">
+                    <div class="text-sm text-ink-gray-5">
+                      {{ __(timeAgo(item.activity.creation)) }}
+                    </div>
+                  </Tooltip>
+                </div>
+              </div>
+              <div
+                v-if="item.activity.other_versions && item.activity.show_others"
+                class="flex flex-col gap-0.5"
+              >
+                <div
+                  v-for="activity in [item.activity, ...item.activity.other_versions]"
+                  class="flex items-start justify-stretch gap-2 py-1.5 text-base"
+                >
+                  <div class="inline-flex flex-wrap gap-1 text-ink-gray-5">
+                    <span
+                      v-if="activity.data?.field_label"
+                      class="max-w-xs truncate text-ink-gray-5"
+                    >
+                      {{ __(activity.data.field_label) }}
+                    </span>
+                    <FeatherIcon
+                      name="arrow-right"
+                      class="mx-1 h-4 w-4 text-ink-gray-5"
+                    />
+                    <span v-if="activity.type">
+                      {{ startCase(__(activity.type)) }}
+                    </span>
+                    <span
+                      v-if="activity.data?.old_value"
+                      class="max-w-xs font-medium text-ink-gray-8"
+                    >
+                      <div
+                        class="flex items-center gap-1"
+                        v-if="activity.options == 'User'"
+                      >
+                        <UserAvatar :user="activity.data.old_value" size="xs" />
+                        {{ getUser(activity.data.old_value).full_name }}
+                      </div>
+                      <div class="truncate" v-else>
+                        {{ activity.data.old_value }}
+                      </div>
+                    </span>
+                    <span v-if="activity.to">{{ __('to') }}</span>
+                    <span
+                      v-if="activity.data?.value"
+                      class="max-w-xs font-medium text-ink-gray-8"
+                    >
+                      <div
+                        class="flex items-center gap-1"
+                        v-if="activity.options == 'User'"
+                      >
+                        <UserAvatar :user="activity.data.value" size="xs" />
+                        {{ getUser(activity.data.value).full_name }}
+                      </div>
+                      <div class="truncate" v-else>
+                        {{ activity.data.value }}
+                      </div>
+                    </span>
+                  </div>
+
+                  <div class="ml-auto whitespace-nowrap">
+                    <Tooltip :text="formatDate(activity.creation)">
+                      <div class="text-sm text-ink-gray-5">
+                        {{ __(timeAgo(activity.creation)) }}
+                      </div>
+                    </Tooltip>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+        <!-- Notes (kept separate grid) -->
+        <div v-if="activityNotes.length" class="grid grid-cols-1 gap-4 pb-3 sm:pb-5 lg:grid-cols-2 xl:grid-cols-3 mt-2">
+          <div v-for="note in activityNotes" :key="'act-note-' + note.name" @click="modalRef.showNote(note)">
+            <NoteArea :note="note" v-model="all_activities" />
           </div>
         </div>
       </div>
@@ -918,6 +1088,35 @@ const smsThreads = computed(() => {
 const activityNotes = computed(() => {
   if (title.value !== 'Activity') return []
   return sortByModified((all_activities.data?.notes || []).slice())
+})
+
+// Unified timeline for Activity tab: interleave latest email thread, sms thread, and other activities by their last/own creation timestamp
+const activityTimeline = computed(() => {
+  if (title.value !== 'Activity') return []
+  // Build thread items with timestamp equal to last message creation
+  const emailThreadItems = emailThreads.value.map((t) => ({
+    kind: 'email_thread',
+    thread: t,
+    ts: new Date(t.items[t.items.length - 1].creation).getTime(),
+    key: 'et-' + t.subject,
+  }))
+  const smsThreadItems = smsThreads.value.map((t) => ({
+    kind: 'sms_thread',
+    thread: t,
+    ts: new Date(t.items[t.items.length - 1].creation).getTime(),
+    key: 'st-' + t.date,
+  }))
+  // Remaining activities already exclude email/sms communications
+  const otherItems = activities.value.map((a) => ({
+    kind: 'activity',
+    activity: a,
+    ts: new Date(a.creation).getTime(),
+    key: 'ac-' + a.name,
+  }))
+  const merged = [...emailThreadItems, ...smsThreadItems, ...otherItems]
+  // Sort ascending (oldest at top) to preserve existing time ordering pattern
+  merged.sort((a, b) => a.ts - b.ts)
+  return merged
 })
 
 function sortByCreation(list) {
