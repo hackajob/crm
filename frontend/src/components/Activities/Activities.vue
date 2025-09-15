@@ -167,6 +167,12 @@
             </div>
           </div>
         </div>
+        <!-- Notes in Activity (cards layout similar to Notes tab basic) -->
+        <div v-if="activityNotes.length" class="grid grid-cols-1 gap-4 pb-3 sm:pb-5 lg:grid-cols-2 xl:grid-cols-3 mt-2">
+          <div v-for="note in activityNotes" :key="'act-note-' + note.name" @click="modalRef.showNote(note)">
+            <NoteArea :note="note" v-model="all_activities" />
+          </div>
+        </div>
         <!-- Non-communication items (already filtered from emails/SMS) -->
         <div v-for="(activity, i) in activities" :key="'act-rest-' + activity.name" class="activity" :class="'grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4'">
           <div
@@ -907,6 +913,11 @@ const smsThreads = computed(() => {
   }
   threads.sort((A, B) => new Date(A.items[A.items.length - 1].creation) - new Date(B.items[B.items.length - 1].creation))
   return threads
+})
+// Notes for Activity tab (reuse full notes list; not threaded)
+const activityNotes = computed(() => {
+  if (title.value !== 'Activity') return []
+  return sortByModified((all_activities.data?.notes || []).slice())
 })
 
 function sortByCreation(list) {
