@@ -139,7 +139,7 @@
           </div>
         </div>
       </div>
-      <!-- Activity tab unified timeline (threads + calls + other activities chronologically) -->
+      <!-- Activity tab unified timeline (threads + calls + notes + other activities chronologically) -->
       <div v-else-if="title == 'Activity'" class="px-3 sm:px-10">
         <div
           v-for="(item, i) in activityTimeline"
@@ -155,6 +155,12 @@
               class="z-10 flex h-8 w-7 items-center justify-center bg-surface-white"
             >
               <UserAvatar :user="item.thread.items[item.thread.items.length - 1].data.sender" size="md" />
+            </div>
+            <div
+              v-else-if="item.kind === 'note'"
+              class="z-10 flex h-8 w-7 items-center justify-center bg-surface-white"
+            >
+              <UserAvatar :user="item.note.owner" size="md" />
             </div>
             <div
               v-else
@@ -190,6 +196,9 @@
           </div>
           <div v-else-if="item.kind === 'sms_thread'" class="pb-5 mt-px w-full">
             <SmsThread :thread="item.thread" />
+          </div>
+          <div v-else-if="item.kind === 'note'" class="pb-5 mt-px w-full cursor-pointer" @click="modalRef.showNote(item.note)">
+            <NoteArea :note="item.note" v-model="all_activities" />
           </div>
           <!-- Activity types -->
           <template v-else>
@@ -376,12 +385,6 @@
               </div>
             </div>
           </template>
-        </div>
-        <!-- Notes (kept separate grid) -->
-        <div v-if="activityNotes.length" class="grid grid-cols-1 gap-4 pb-3 sm:pb-5 lg:grid-cols-2 xl:grid-cols-3 mt-2">
-          <div v-for="note in activityNotes" :key="'act-note-' + note.name" @click="modalRef.showNote(note)">
-            <NoteArea :note="note" v-model="all_activities" />
-          </div>
         </div>
       </div>
       <div
@@ -1084,13 +1087,7 @@ const smsThreads = computed(() => {
   threads.sort((A, B) => new Date(A.items[A.items.length - 1].creation) - new Date(B.items[B.items.length - 1].creation))
   return threads
 })
-// Notes for Activity tab (reuse full notes list; not threaded)
-const activityNotes = computed(() => {
-  if (title.value !== 'Activity') return []
-  return sortByModified((all_activities.data?.notes || []).slice())
-})
-
-// Unified timeline for Activity tab: interleave latest email thread, sms thread, and other activities by their last/own creation timestamp
+// Unified timeline for Activity tab: interleave latest email thread, sms thread, notes, and other activities by their last/own creation timestamp
 const activityTimeline = computed(() => {
   if (title.value !== 'Activity') return []
   // Build thread items with timestamp equal to last message creation
@@ -1106,6 +1103,12 @@ const activityTimeline = computed(() => {
     ts: new Date(t.items[t.items.length - 1].creation).getTime(),
     key: 'st-' + t.date,
   }))
+  const noteItems = (all_activities.data?.notes || []).map((n) => ({
+    kind: 'note',
+    note: n,
+    ts: new Date(n.modified || n.creation).getTime(),
+    key: 'nt-' + n.name,
+  }))
   // Remaining activities already exclude email/sms communications
   const otherItems = activities.value.map((a) => ({
     kind: 'activity',
@@ -1113,7 +1116,7 @@ const activityTimeline = computed(() => {
     ts: new Date(a.creation).getTime(),
     key: 'ac-' + a.name,
   }))
-  const merged = [...emailThreadItems, ...smsThreadItems, ...otherItems]
+  const merged = [...emailThreadItems, ...smsThreadItems, ...noteItems, ...otherItems]
   // Sort ascending (oldest at top) to preserve existing time ordering pattern
   merged.sort((a, b) => a.ts - b.ts)
   return merged
