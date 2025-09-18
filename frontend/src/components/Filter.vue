@@ -367,7 +367,8 @@ function getValueControl(f) {
   const { field, operator } = f
   const { fieldtype, options } = field
   if (operator == 'is') {
-    if (typeLink.includes(fieldtype) && options) {
+  const isChildLink = f.fieldname && f.fieldname.includes('.')
+  if (isChildLink && typeLink.includes(fieldtype) && options) {
       return h(MultiSelectLink, {
         doctype: options,
         placeholder: `Select ${field.label}...`,
@@ -541,10 +542,15 @@ function updateOperator(event, filter) {
   if (!isSameTypeOperator(oldOperatorValue, newOperatorValue)) {
     filter.value = getDefaultValue(filter.field)
   }
-  if (newOperatorValue === 'is' || newOperatorValue === 'is not') {
-    if (typeLink.includes(fieldtype) && options) {
-      filter.value = []
+  if (newOperatorValue === 'is') {
+  const { fieldtype, options, fieldname } = filter.field || {}
+  const isChildLink = fieldname && fieldname.includes('.')
+  if (isChildLink && typeLink.includes(fieldtype) && options) {
+      filter.value = Array.isArray(filter.value) ? filter.value : []
+    } else {
+      filter.value = 'set'
     }
+  } else if (newOperatorValue === 'is not') {
     filter.value = 'set'
   }
   apply()
