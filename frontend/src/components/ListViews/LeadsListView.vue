@@ -157,7 +157,7 @@
           </div>
           <div
             v-else
-            class="truncate text-base"
+            class="group relative flex items-center gap-1 truncate text-base"
             @click="
               (event) =>
                 emit('applyFilter', {
@@ -169,7 +169,15 @@
                 })
             "
           >
-            {{ label }}
+            <span class="truncate">{{ label }}</span>
+            <Tooltip v-if="label" :text="__('Copy')">
+              <Button
+                icon="copy"
+                variant="ghost"
+                class="opacity-0 group-hover:opacity-100 !h-4 !w-4 p-0"
+                @click.stop.prevent="copyText(label)"
+              />
+            </Tooltip>
           </div>
         </template>
       </ListRowItem>
@@ -295,5 +303,25 @@ function openLeadInNewTab(row) {
     query: { view: route.query.view, viewType: route.params.viewType },
   }).href
   window.open(url, '_blank', 'noopener')
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text || '')
+  } catch (e) {
+    // Fallback
+    const ta = document.createElement('textarea')
+    ta.value = text || ''
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    try {
+      document.execCommand('copy')
+    } finally {
+      document.body.removeChild(ta)
+    }
+  }
 }
 </script>
