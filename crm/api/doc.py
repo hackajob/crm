@@ -1,4 +1,5 @@
 import json
+import re
 
 import frappe
 from frappe import _
@@ -410,6 +411,22 @@ def get_data(
 	
 	filters = processed_filters
 
+	# Normalize LIKE patterns server-side for phone-like fields without mutating client input
+	def _is_phone_field(fieldname: str) -> bool:
+		return bool(fieldname and re.match(r"(?i)(from|to|phone|mobile|telephone|contact_no|contact|tel)", fieldname))
+
+	for key, value in list(filters.items()):
+		if isinstance(value, list) and len(value) == 2:
+			op, val = value
+			if isinstance(op, str) and op.upper() in ("LIKE", "NOT LIKE") and isinstance(val, str):
+				if _is_phone_field(key):
+					# For phone-like fields: preserve leading '+' if present and strip non-digits
+					trimmed = val.strip()
+					keep_plus = trimmed.startswith("+")
+					digits = re.sub(r"\D+", "", val)
+					if digits:
+						normalized = ("+" if keep_plus else "") + digits
+						filters[key] = [op, f"%{normalized}%"]
 	is_default = True
 	data = []
 	_list = get_controller(doctype)
