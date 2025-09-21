@@ -1,5 +1,5 @@
 
-__version__ = "1.52.9"
+__version__ = "1.52.11"
 __title__ = "Frappe CRM"
 
 def _patch_email():
