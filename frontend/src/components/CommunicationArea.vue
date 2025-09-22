@@ -4,24 +4,22 @@
       <Button
         ref="sendEmailRef"
         variant="ghost"
-        :class="[showEmailBox ? '!bg-surface-gray-4 hover:!bg-surface-gray-3' : '']"
+        :class="[
+          showEmailBox ? '!bg-surface-gray-4 hover:!bg-surface-gray-3' : '',
+        ]"
         :label="__('Reply')"
+        :iconLeft="Email2Icon"
         @click="toggleEmailBox()"
-      >
-        <template #prefix>
-          <Email2Icon class="h-4" />
-        </template>
-      </Button>
+      />
       <Button
         variant="ghost"
         :label="__('Comment')"
-        :class="[showCommentBox ? '!bg-surface-gray-4 hover:!bg-surface-gray-3' : '']"
+        :class="[
+          showCommentBox ? '!bg-surface-gray-4 hover:!bg-surface-gray-3' : '',
+        ]"
+        :iconLeft="CommentIcon"
         @click="toggleCommentBox()"
-      >
-        <template #prefix>
-          <CommentIcon class="h-4" />
-        </template>
-      </Button>
+      />
     </div>
   </div>
   <div
@@ -41,7 +39,7 @@
         onClick: () => {
           showEmailBox = false
           newEmailEditor.subject = subject
-          newEmailEditor.toEmails = doc.data.email ? [doc.data.email] : []
+          newEmailEditor.toEmails = doc.email ? [doc.email] : []
           newEmailEditor.ccEmails = []
           newEmailEditor.bccEmails = []
           newEmailEditor.cc = false
@@ -50,7 +48,7 @@
         },
       }"
       :editable="showEmailBox"
-      v-model="doc.data"
+      v-model="doc"
       v-model:attachments="attachments"
       :doctype="doctype"
       :subject="subject"
@@ -75,7 +73,7 @@
         },
       }"
       :editable="showCommentBox"
-      v-model="doc.data"
+      v-model="doc"
       v-model:attachments="attachments"
       :doctype="doctype"
       :placeholder="__('@John, can you please check this?')"
@@ -92,6 +90,7 @@ import { capture } from '@/telemetry'
 import { usersStore } from '@/stores/users'
 import { useStorage } from '@vueuse/core'
 import { call, createResource } from 'frappe-ui'
+import { useOnboarding } from 'frappe-ui/frappe'
 import { ref, watch, computed } from 'vue'
 
 const props = defineProps({
@@ -107,6 +106,7 @@ const reload = defineModel('reload')
 const emit = defineEmits(['scroll'])
 
 const { getUser } = usersStore()
+const { updateOnboardingStep } = useOnboarding('frappecrm')
 
 const showEmailBox = ref(false)
 const showCommentBox = ref(false)
@@ -119,12 +119,12 @@ const attachments = ref([])
 
 const subject = computed(() => {
   let prefix = ''
-  if (doc.value.data?.lead_name) {
-    prefix = doc.value.data.lead_name
-  } else if (doc.value.data?.organization) {
-    prefix = doc.value.data.organization
+  if (doc.value?.lead_name) {
+    prefix = doc.value.lead_name
+  } else if (doc.value?.organization) {
+    prefix = doc.value.organization
   }
-  return `${prefix} (#${doc.value.data.name})`
+  return `${prefix} (#${doc.value.name})`
 })
 
 const signature = createResource({
@@ -152,7 +152,7 @@ watch(
       editor.commands.focus()
       setSignature(editor)
     }
-  }
+  },
 )
 
 watch(
@@ -161,7 +161,7 @@ watch(
     if (value) {
       newCommentEditor.value.editor.commands.focus()
     }
-  }
+  },
 )
 
 const commentEmpty = computed(() => {
@@ -169,7 +169,11 @@ const commentEmpty = computed(() => {
 })
 
 const emailEmpty = computed(() => {
-  return !newEmail.value || newEmail.value === '<p></p>'
+  return (
+    !newEmail.value ||
+    newEmail.value === '<p></p>' ||
+    !newEmailEditor.value?.toEmails?.length
+  )
 })
 
 async function sendMail() {
@@ -189,7 +193,7 @@ async function sendMail() {
     subject: subject,
     content: newEmail.value,
     doctype: props.doctype,
-    name: doc.value.data.name,
+    name: doc.value.name,
     send_email: 1,
     sender: getUser().email,
     sender_full_name: getUser()?.full_name || undefined,
@@ -199,7 +203,7 @@ async function sendMail() {
 async function sendComment() {
   let comment = await call('frappe.desk.form.utils.add_comment', {
     reference_doctype: props.doctype,
-    reference_name: doc.value.data.name,
+    reference_name: doc.value.name,
     content: newComment.value,
     comment_email: getUser().email,
     comment_by: getUser()?.full_name || undefined,
@@ -221,6 +225,7 @@ async function submitEmail() {
   reload.value = true
   emit('scroll')
   capture('email_sent', { doctype: props.doctype })
+  updateOnboardingStep('send_first_email')
 }
 
 async function submitComment() {
@@ -231,6 +236,7 @@ async function submitComment() {
   reload.value = true
   emit('scroll')
   capture('comment_sent', { doctype: props.doctype })
+  updateOnboardingStep('add_first_comment')
 }
 
 function toggleEmailBox() {

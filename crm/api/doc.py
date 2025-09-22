@@ -2,6 +2,8 @@ import json
 
 import frappe
 from frappe import _
+from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+from frappe.desk.form.assign_to import set_status
 from frappe.model import no_value_fields
 from frappe.model.document import get_controller
 from frappe.utils import make_filter_tuple
@@ -9,6 +11,7 @@ from pypika import Criterion
 
 from crm.api.views import get_views
 from crm.fcrm.doctype.crm_form_script.crm_form_script import get_form_script
+from crm.utils import get_dynamic_linked_docs, get_linked_docs
 
 
 @frappe.whitelist()
@@ -178,23 +181,39 @@ def get_doctype_fields_meta(DocField, doctype, allowed_fieldtypes, restricted_fi
 
 
 @frappe.whitelist()
-def get_quick_filters(doctype: str):
-	meta = frappe.get_meta(doctype)
-	fields = [field for field in meta.fields if field.in_standard_filter]
+def get_quick_filters(doctype: str, cached: bool = True):
+	meta = frappe.get_meta(doctype, cached)
 	quick_filters = []
 
+	if global_settings := frappe.db.exists("CRM Global Settings", {"dt": doctype, "type": "Quick Filters"}):
+		_quick_filters = frappe.db.get_value("CRM Global Settings", global_settings, "json")
+		_quick_filters = json.loads(_quick_filters) or []
+
+		fields = []
+
+		for filter in _quick_filters:
+			if filter == "name":
+				fields.append({"label": "Name", "fieldname": "name", "fieldtype": "Data"})
+			else:
+				field = next((f for f in meta.fields if f.fieldname == filter), None)
+				if field:
+					fields.append(field)
+
+	else:
+		fields = [field for field in meta.fields if field.in_standard_filter]
+
 	for field in fields:
-		options = field.options
-		if field.fieldtype == "Select" and options and isinstance(options, str):
+		options = field.get("options")
+		if field.get("fieldtype") == "Select" and options and isinstance(options, str):
 			options = options.split("\n")
 			options = [{"label": option, "value": option} for option in options]
 			if not any([not option.get("value") for option in options]):
 				options.insert(0, {"label": "", "value": ""})
 		quick_filters.append(
 			{
-				"label": _(field.label),
-				"fieldname": field.fieldname,
-				"fieldtype": field.fieldtype,
+				"label": _(field.get("label")),
+				"fieldname": field.get("fieldname"),
+				"fieldtype": field.get("fieldtype"),
 				"options": options,
 			}
 		)
@@ -203,6 +222,55 @@ def get_quick_filters(doctype: str):
 		quick_filters = [filter for filter in quick_filters if filter.get("fieldname") != "converted"]
 
 	return quick_filters
+
+
+@frappe.whitelist()
+def update_quick_filters(quick_filters: str, old_filters: str, doctype: str):
+	quick_filters = json.loads(quick_filters)
+	old_filters = json.loads(old_filters)
+
+	new_filters = [filter for filter in quick_filters if filter not in old_filters]
+	removed_filters = [filter for filter in old_filters if filter not in quick_filters]
+
+	# update or create global quick filter settings
+	create_update_global_settings(doctype, quick_filters)
+
+	# remove old filters
+	for filter in removed_filters:
+		update_in_standard_filter(filter, doctype, 0)
+
+	# add new filters
+	for filter in new_filters:
+		update_in_standard_filter(filter, doctype, 1)
+
+
+def create_update_global_settings(doctype, quick_filters):
+	if global_settings := frappe.db.exists("CRM Global Settings", {"dt": doctype, "type": "Quick Filters"}):
+		frappe.db.set_value("CRM Global Settings", global_settings, "json", json.dumps(quick_filters))
+	else:
+		# create CRM Global Settings doc
+		doc = frappe.new_doc("CRM Global Settings")
+		doc.dt = doctype
+		doc.type = "Quick Filters"
+		doc.json = json.dumps(quick_filters)
+		doc.insert()
+
+
+def update_in_standard_filter(fieldname, doctype, value):
+	if property_name := frappe.db.exists(
+		"Property Setter",
+		{"doc_type": doctype, "field_name": fieldname, "property": "in_standard_filter"},
+	):
+		frappe.db.set_value("Property Setter", property_name, "value", value)
+	else:
+		make_property_setter(
+			doctype,
+			fieldname,
+			"in_standard_filter",
+			value,
+			"Check",
+			validate_fields_for_doctype=False,
+		)
 
 
 @frappe.whitelist()
@@ -276,7 +344,7 @@ def get_data(
 		default_view_filters = {
 			"dt": doctype,
 			"type": view_type or "list",
-			"is_default": 1,
+			"is_standard": 1,
 			"user": frappe.session.user,
 		}
 
@@ -394,9 +462,11 @@ def get_data(
 				new_filters = filters.copy()
 				new_filters.update({column_field: kc.get("name")})
 
-				all_count = len(
-					frappe.get_list(doctype, filters=convert_filter_to_tuple(doctype, new_filters))
-				)
+				all_count = frappe.get_list(
+					doctype,
+					filters=convert_filter_to_tuple(doctype, new_filters),
+					fields="count(*) as total_count",
+				)[0].total_count
 
 				kc["all_count"] = all_count
 				kc["count"] = len(column_data)
@@ -498,7 +568,9 @@ def get_data(
 		"page_length_count": page_length_count,
 		"is_default": is_default,
 		"views": get_views(doctype),
-		"total_count": len(frappe.get_list(doctype, filters=filters)),
+		"total_count": frappe.get_list(doctype, filters=filters, fields="count(*) as total_count")[
+			0
+		].total_count,
 		"row_count": len(data),
 		"form_script": get_form_script(doctype),
 		"list_script": get_form_script(doctype, "List"),
@@ -552,7 +624,7 @@ def get_records_based_on_order(doctype, rows, filters, page_length, order):
 
 
 @frappe.whitelist()
-def get_fields_meta(doctype, restricted_fieldtypes=None, as_array=False):
+def get_fields_meta(doctype, restricted_fieldtypes=None, as_array=False, only_required=False):
 	not_allowed_fieldtypes = [
 		"Tab Break",
 		"Section Break",
@@ -587,6 +659,9 @@ def get_fields_meta(doctype, restricted_fieldtypes=None, as_array=False):
 		if not restricted_fieldtypes or field.get("fieldtype") not in restricted_fieldtypes:
 			fields.append(field)
 
+	if only_required:
+		fields = [field for field in fields if field.get("reqd")]
+
 	if as_array:
 		return fields
 
@@ -600,6 +675,25 @@ def get_fields_meta(doctype, restricted_fieldtypes=None, as_array=False):
 	return fields_meta
 
 
+@frappe.whitelist()
+def remove_assignments(doctype, name, assignees, ignore_permissions=False):
+	assignees = frappe.parse_json(assignees)
+
+	if not assignees:
+		return
+
+	for assign_to in assignees:
+		set_status(
+			doctype,
+			name,
+			todo=None,
+			assign_to=assign_to,
+			status="Cancelled",
+			ignore_permissions=ignore_permissions,
+		)
+
+
+@frappe.whitelist()
 def get_assigned_users(doctype, name, default_assigned_to=None):
 	assigned_users = frappe.get_all(
 		"ToDo",
@@ -667,3 +761,98 @@ def getCounts(d, doctype):
 		"FCRM Note", filters={"reference_doctype": doctype, "reference_docname": d.get("name")}
 	)
 	return d
+
+
+@frappe.whitelist()
+def get_linked_docs_of_document(doctype, docname):
+	doc = frappe.get_doc(doctype, docname)
+	linked_docs = get_linked_docs(doc)
+	dynamic_linked_docs = get_dynamic_linked_docs(doc)
+
+	linked_docs.extend(dynamic_linked_docs)
+	linked_docs = list({doc["reference_docname"]: doc for doc in linked_docs}.values())
+
+	docs_data = []
+	for doc in linked_docs:
+		data = frappe.get_doc(doc["reference_doctype"], doc["reference_docname"])
+		title = data.get("title")
+		if data.doctype == "CRM Call Log":
+			title = f"Call from {data.get('from')} to {data.get('to')}"
+
+		if data.doctype == "CRM Deal":
+			title = data.get("organization")
+
+		docs_data.append(
+			{
+				"doc": data.doctype,
+				"title": title or data.get("name"),
+				"reference_docname": doc["reference_docname"],
+				"reference_doctype": doc["reference_doctype"],
+			}
+		)
+	return docs_data
+
+
+def remove_doc_link(doctype, docname):
+	linked_doc_data = frappe.get_doc(doctype, docname)
+	linked_doc_data.update(
+		{
+			"reference_doctype": None,
+			"reference_docname": None,
+		}
+	)
+	linked_doc_data.save(ignore_permissions=True)
+
+
+def remove_contact_link(doctype, docname):
+	linked_doc_data = frappe.get_doc(doctype, docname)
+	linked_doc_data.update(
+		{
+			"contact": None,
+			"contacts": [],
+		}
+	)
+	linked_doc_data.save(ignore_permissions=True)
+
+
+@frappe.whitelist()
+def remove_linked_doc_reference(items, remove_contact=None, delete=False):
+	if isinstance(items, str):
+		items = frappe.parse_json(items)
+
+	for item in items:
+		if remove_contact:
+			remove_contact_link(item["doctype"], item["docname"])
+		else:
+			remove_doc_link(item["doctype"], item["docname"])
+
+		if delete:
+			frappe.delete_doc(item["doctype"], item["docname"])
+
+	return "success"
+
+
+@frappe.whitelist()
+def delete_bulk_docs(doctype, items, delete_linked=False):
+	from frappe.desk.reportview import delete_bulk
+
+	items = frappe.parse_json(items)
+	for doc in items:
+		linked_docs = get_linked_docs_of_document(doctype, doc)
+		for linked_doc in linked_docs:
+			remove_linked_doc_reference(
+				[
+					{
+						"doctype": linked_doc["reference_doctype"],
+						"docname": linked_doc["reference_docname"],
+					}
+				],
+				remove_contact=doctype == "Contact",
+				delete=delete_linked,
+			)
+
+	if len(items) > 10:
+		frappe.enqueue("frappe.desk.reportview.delete_bulk", doctype=doctype, items=items)
+	else:
+		delete_bulk(doctype, items)
+	return "success"

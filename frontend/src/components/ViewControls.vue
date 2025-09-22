@@ -22,11 +22,12 @@
         </div>
 
         <div class="flex gap-2">
-          <Button :label="__('Refresh')" @click="reload()" :loading="isLoading">
-            <template #icon>
-              <RefreshIcon class="h-4 w-4" />
-            </template>
-          </Button>
+          <Button
+            :tooltip="__('Refresh')"
+            :icon="RefreshIcon"
+            :loading="isLoading"
+            @click="reload()"
+          />
           <SortBy
             v-if="route.params.viewType !== 'kanban'"
             v-model="list"
@@ -58,6 +59,76 @@
       </div>
     </div>
   </div>
+  <div
+    v-else-if="customizeQuickFilter"
+    class="flex items-center justify-between gap-2 p-5"
+  >
+    <div class="flex flex-1 items-center overflow-hidden pl-1 gap-2">
+      <FadedScrollableDiv
+        class="flex overflow-x-auto -ml-1"
+        orientation="horizontal"
+      >
+        <Draggable
+          class="flex w-full gap-2 items-center"
+          :list="newQuickFilters"
+          group="filters"
+          item-key="fieldname"
+        >
+          <template #item="{ element: filter }">
+            <div class="group whitespace-nowrap cursor-grab">
+              <Button class="cursor-grab">
+                <template #default>
+                  <Tooltip :text="filter.fieldname">
+                    <span>{{ filter.label }}</span>
+                  </Tooltip>
+                </template>
+                <template #suffix>
+                  <FeatherIcon
+                    class="h-3.5 cursor-pointer group-hover:flex hidden"
+                    name="x"
+                    @click.stop="removeQuickFilter(filter)"
+                  />
+                </template>
+              </Button>
+            </div>
+          </template>
+        </Draggable>
+      </FadedScrollableDiv>
+      <div>
+        <Autocomplete
+          value=""
+          :options="quickFilterOptions"
+          @change="(e) => addQuickFilter(e)"
+        >
+          <template #target="{ togglePopover }">
+            <Button
+              class="whitespace-nowrap mr-2"
+              variant="ghost"
+              :label="__('Add filter')"
+              iconLeft="plus"
+              @click="togglePopover()"
+            />
+          </template>
+          <template #item-label="{ option }">
+            <Tooltip :text="option.value" :hover-delay="1">
+              <div class="flex-1 truncate text-ink-gray-7">
+                {{ option.label }}
+              </div>
+            </Tooltip>
+          </template>
+        </Autocomplete>
+      </div>
+    </div>
+    <div class="-ml-2 h-[70%] border-l" />
+    <div class="flex gap-1">
+      <Button
+        :label="__('Save')"
+        :loading="updateQuickFilters.loading"
+        @click="saveQuickFilters"
+      />
+      <Button icon="x" @click="customizeQuickFilter = false" />
+    </div>
+  </div>
   <div v-else class="flex items-center justify-between gap-2 px-5 py-4">
     <FadedScrollableDiv
       class="flex flex-1 items-center overflow-x-auto -ml-1"
@@ -84,11 +155,12 @@
         <Button :label="__('Save Changes')" @click="saveView" />
       </div>
       <div class="flex items-center gap-2">
-        <Button :label="__('Refresh')" @click="reload()" :loading="isLoading">
-          <template #icon>
-            <RefreshIcon class="h-4 w-4" />
-          </template>
-        </Button>
+        <Button
+          :tooltip="__('Refresh')"
+          :icon="RefreshIcon"
+          :loading="isLoading"
+          @click="reload()"
+        />
         <GroupBy
           v-if="route.params.viewType === 'group_by'"
           v-model="list"
@@ -120,9 +192,8 @@
           @update="(isDefault) => updateColumns(isDefault)"
         />
         <Dropdown
-          v-if="
-            !options.hideColumnsButton && route.params.viewType !== 'kanban'
-          "
+          v-if="route.params.viewType !== 'kanban' || isManager()"
+          placement="right"
           :options="[
             {
               group: __('Options'),
@@ -130,16 +201,24 @@
               items: [
                 {
                   label: __('Export'),
-                  icon: () =>
-                    h(FeatherIcon, { name: 'download', class: 'h-4 w-4' }),
+                  icon: () => h(ExportIcon, { class: 'h-4 w-4' }),
                   onClick: () => (showExportDialog = true),
+                  condition: () =>
+                    !options.hideColumnsButton &&
+                    route.params.viewType !== 'kanban',
+                },
+                {
+                  label: __('Customize quick filters'),
+                  icon: () => h(QuickFilterIcon, { class: 'h-4 w-4' }),
+                  onClick: () => showCustomizeQuickFilter(),
+                  condition: () => isManager(),
                 },
               ],
             },
           ]"
         >
           <template #default>
-            <Button icon="more-horizontal" />
+            <Button :tooltip="__('More Options')" icon="more-horizontal" />
           </template>
         </Dropdown>
       </div>
@@ -215,9 +294,13 @@ import QuickFilterField from '@/components/QuickFilterField.vue'
 import RefreshIcon from '@/components/Icons/RefreshIcon.vue'
 import EditIcon from '@/components/Icons/EditIcon.vue'
 import DuplicateIcon from '@/components/Icons/DuplicateIcon.vue'
+import CheckIcon from '@/components/Icons/CheckIcon.vue'
 import PinIcon from '@/components/Icons/PinIcon.vue'
 import UnpinIcon from '@/components/Icons/UnpinIcon.vue'
+import ExportIcon from '@/components/Icons/ExportIcon.vue'
+import QuickFilterIcon from '@/components/Icons/QuickFilterIcon.vue'
 import ViewModal from '@/components/Modals/ViewModal.vue'
+import Autocomplete from '@/components/frappe-ui/Autocomplete.vue'
 import SortBy from '@/components/SortBy.vue'
 import Filter from '@/components/Filter.vue'
 import GroupBy from '@/components/GroupBy.vue'
@@ -228,10 +311,13 @@ import { getSettings } from '@/stores/settings'
 import { globalStore } from '@/stores/global'
 import { viewsStore } from '@/stores/views'
 import { usersStore } from '@/stores/users'
+import { getMeta } from '@/stores/meta'
 import { isEmoji } from '@/utils'
 import {
+  Tooltip,
   createResource,
   Dropdown,
+  toast,
   call,
   FeatherIcon,
   usePageMeta,
@@ -240,6 +326,7 @@ import { computed, ref, onMounted, watch, h, markRaw } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useDebounceFn } from '@vueuse/core'
 import { isMobileView } from '@/composables/settings'
+import Draggable from 'vuedraggable'
 import _ from 'lodash'
 
 const props = defineProps({
@@ -263,7 +350,7 @@ const props = defineProps({
 
 const { brand } = getSettings()
 const { $dialog } = globalStore()
-const { reload: reloadView, getView } = viewsStore()
+const { reload: reloadView, getDefaultView, getView } = viewsStore()
 const { isManager } = usersStore()
 
 const list = defineModel()
@@ -309,13 +396,13 @@ const currentView = computed(() => {
     label:
       _view?.label || props.options?.defaultViewName || getViewType().label,
     icon: _view?.icon || getViewType().icon,
-    is_default: !_view || _view.is_default,
+    is_standard: !_view || _view.is_standard,
   }
 })
 
 usePageMeta(() => {
   let label = currentView.value.label
-  if (currentView.value.is_default) {
+  if (currentView.value.is_standard) {
     let routeName = route.name
     label = `${routeName} - ${label}`
   }
@@ -455,6 +542,7 @@ onMounted(() => useDebounceFn(reload, 100)())
 const isLoading = computed(() => list.value?.loading)
 
 function reload() {
+  if (isLoading.value) return
   list.value.params = getParams()
   list.value.reload()
 }
@@ -462,6 +550,11 @@ function reload() {
 const showExportDialog = ref(false)
 const export_type = ref('Excel')
 const export_all = ref(false)
+const selectedRows = ref([])
+
+function updateSelections(selections) {
+  selectedRows.value = Array.from(selections)
+}
 
 async function exportRows() {
   let fields = JSON.stringify(list.value.data.columns.map((f) => f.key))
@@ -477,17 +570,25 @@ async function exportRows() {
     page_length = list.value.data.total_count
   }
 
-  window.location.href = `/api/method/frappe.desk.reportview.export_query?file_format_type=${export_type.value}&title=${props.doctype}&doctype=${props.doctype}&fields=${fields}&filters=${filters}&order_by=${order_by}&page_length=${page_length}&start=0&view=Report&with_comment_count=1`
+  let url = `/api/method/frappe.desk.reportview.export_query?file_format_type=${export_type.value}&title=${props.doctype}&doctype=${props.doctype}&fields=${fields}&filters=${encodeURIComponent(filters)}&order_by=${order_by}&page_length=${page_length}&start=0&view=Report&with_comment_count=1`
+
+  // Add selected items parameter if rows are selected
+  if (selectedRows.value?.length && !export_all.value) {
+    url += `&selected_items=${JSON.stringify(selectedRows.value)}`
+  }
+
+  window.location.href = url
+
   showExportDialog.value = false
   export_all.value = false
   export_type.value = 'Excel'
 }
 
-let defaultViews = []
+let standardViews = []
 let allowedViews = props.options.allowedViews || ['list']
 
 if (allowedViews.includes('list')) {
-  defaultViews.push({
+  standardViews.push({
     name: 'list',
     label: __(props.options?.defaultViewName) || __('List'),
     icon: markRaw(ListIcon),
@@ -498,7 +599,7 @@ if (allowedViews.includes('list')) {
   })
 }
 if (allowedViews.includes('kanban')) {
-  defaultViews.push({
+  standardViews.push({
     name: 'kanban',
     label: __(props.options?.defaultViewName) || __('Kanban'),
     icon: markRaw(KanbanIcon),
@@ -509,7 +610,7 @@ if (allowedViews.includes('kanban')) {
   })
 }
 if (allowedViews.includes('group_by')) {
-  defaultViews.push({
+  standardViews.push({
     name: 'group_by',
     label: __(props.options?.defaultViewName) || __('Group By'),
     icon: markRaw(GroupByIcon),
@@ -534,9 +635,9 @@ function getIcon(icon, type) {
 const viewsDropdownOptions = computed(() => {
   let _views = [
     {
-      group: __('Default Views'),
+      group: __('Standard Views'),
       hideLabel: true,
-      items: defaultViews,
+      items: standardViews,
     },
   ]
 
@@ -561,7 +662,7 @@ const viewsDropdownOptions = computed(() => {
     })
     let publicViews = list.value.data.views.filter((v) => v.public)
     let savedViews = list.value.data.views.filter(
-      (v) => !v.pinned && !v.public && !v.is_default,
+      (v) => !v.pinned && !v.public && !v.is_standard,
     )
     let pinnedViews = list.value.data.views.filter((v) => v.pinned)
 
@@ -597,11 +698,99 @@ const viewsDropdownOptions = computed(() => {
   return _views
 })
 
-const quickFilterList = computed(() => {
-  let filters = []
-  if (quickFilters.data) {
-    filters.push(...quickFilters.data)
+const { getFields } = getMeta(props.doctype)
+
+const customizeQuickFilter = ref(false)
+
+function showCustomizeQuickFilter() {
+  customizeQuickFilter.value = true
+  setupNewQuickFilters(quickFilters.data)
+}
+
+const newQuickFilters = ref([])
+
+function addQuickFilter(f) {
+  if (!newQuickFilters.value.some((filter) => filter.fieldname === f.value)) {
+    newQuickFilters.value.push({
+      label: f.label,
+      fieldname: f.value,
+      fieldtype: f.fieldtype,
+    })
   }
+}
+
+function removeQuickFilter(f) {
+  newQuickFilters.value = newQuickFilters.value.filter(
+    (filter) => filter.fieldname !== f.fieldname,
+  )
+}
+
+const updateQuickFilters = createResource({
+  url: 'crm.api.doc.update_quick_filters',
+  onSuccess() {
+    customizeQuickFilter.value = false
+
+    quickFilters.update({ params: { doctype: props.doctype, cached: false } })
+    quickFilters.reload()
+    toast.success(__('Quick Filters updated successfully'))
+  },
+})
+
+function saveQuickFilters() {
+  let new_filters =
+    newQuickFilters.value?.map((filter) => filter.fieldname) || []
+  let old_filters = quickFilters.data?.map((filter) => filter.fieldname) || []
+
+  updateQuickFilters.update({
+    params: {
+      quick_filters: JSON.stringify(new_filters),
+      old_filters: JSON.stringify(old_filters),
+      doctype: props.doctype,
+    },
+  })
+
+  updateQuickFilters.fetch()
+}
+
+const quickFilterOptions = computed(() => {
+  let fields = getFields()
+  if (!fields) return []
+
+  let existingQuickFilters = newQuickFilters.value.map((f) => f.fieldname)
+  let restrictedFieldtypes = [
+    'Tab Break',
+    'Section Break',
+    'Column Break',
+    'Table',
+    'Table MultiSelect',
+    'HTML',
+    'Button',
+    'Image',
+    'Fold',
+    'Heading',
+  ]
+  let options = fields
+    .filter((f) => f.label && !restrictedFieldtypes.includes(f.fieldtype))
+    .filter((f) => !existingQuickFilters.includes(f.fieldname))
+    .map((field) => ({
+      label: field.label,
+      value: field.fieldname,
+      fieldtype: field.fieldtype,
+    }))
+
+  if (!options.some((f) => f.fieldname === 'name')) {
+    options.push({
+      label: __('Name'),
+      value: 'name',
+      fieldtype: 'Data',
+    })
+  }
+
+  return options
+})
+
+const quickFilterList = computed(() => {
+  let filters = quickFilters.data || []
 
   filters.forEach((filter) => {
     filter['value'] = filter.fieldtype == 'Check' ? false : ''
@@ -632,8 +821,20 @@ const quickFilters = createResource({
   url: 'crm.api.doc.get_quick_filters',
   params: { doctype: props.doctype },
   cache: ['Quick Filters', props.doctype],
-  auto: true,
+  onSuccess(filters) {
+    setupNewQuickFilters(filters)
+  },
 })
+
+if (!quickFilters.data) quickFilters.fetch()
+
+function setupNewQuickFilters(filters) {
+  newQuickFilters.value = filters.map((f) => ({
+    label: f.label,
+    fieldname: f.fieldname,
+    fieldtype: f.fieldtype,
+  }))
+}
 
 function applyQuickFilter(filter, value) {
   let filters = { ...list.value.params.filters }
@@ -665,7 +866,7 @@ function updateFilter(filters) {
   list.value.reload()
 
   if (!route.query.view) {
-    create_or_update_default_view()
+    createOrUpdateStandardView()
   }
 }
 
@@ -680,7 +881,7 @@ function updateSort(order_by) {
   list.value.reload()
 
   if (!route.query.view) {
-    create_or_update_default_view()
+    createOrUpdateStandardView()
   }
 }
 
@@ -695,7 +896,7 @@ function updateGroupBy(group_by_field) {
   list.value.reload()
 
   if (!route.query.view) {
-    create_or_update_default_view()
+    createOrUpdateStandardView()
   }
 }
 
@@ -729,7 +930,7 @@ function updateColumns(obj) {
   viewUpdated.value = true
 
   if (!route.query.view) {
-    create_or_update_default_view()
+    createOrUpdateStandardView()
   }
 }
 
@@ -742,9 +943,9 @@ async function updateKanbanSettings(data) {
       value: data.to,
     })
   }
-  let isDirty = viewUpdated.value
 
   viewUpdated.value = true
+
   if (!defaultParams.value) {
     defaultParams.value = getParams()
   }
@@ -771,27 +972,7 @@ async function updateKanbanSettings(data) {
   list.value.reload()
 
   if (!route.query.view) {
-    create_or_update_default_view()
-  } else if (!data.column_field) {
-    if (isDirty) {
-      $dialog({
-        title: __('Unsaved Changes'),
-        message: __('You have unsaved changes. Do you want to save them?'),
-        variant: 'danger',
-        actions: [
-          {
-            label: __('Update'),
-            variant: 'solid',
-            onClick: (close) => {
-              update_custom_view()
-              close()
-            },
-          },
-        ],
-      })
-    } else {
-      update_custom_view()
-    }
+    createOrUpdateStandardView()
   }
 }
 
@@ -814,11 +995,11 @@ function loadMoreKanban(columnName) {
   list.value.reload()
 }
 
-function create_or_update_default_view() {
+function createOrUpdateStandardView() {
   if (route.query.view) return
   view.value.doctype = props.doctype
   call(
-    'crm.fcrm.doctype.crm_view_settings.crm_view_settings.create_or_update_default_view',
+    'crm.fcrm.doctype.crm_view_settings.crm_view_settings.create_or_update_standard_view',
     {
       view: view.value,
     },
@@ -845,32 +1026,8 @@ function create_or_update_default_view() {
   })
 }
 
-function update_custom_view() {
-  viewUpdated.value = false
-  view.value = {
-    doctype: props.doctype,
-    label: view.value.label,
-    type: view.value.type || 'list',
-    icon: view.value.icon,
-    name: view.value.name,
-    filters: defaultParams.value.filters,
-    order_by: defaultParams.value.order_by,
-    group_by_field: defaultParams.value.view.group_by_field,
-    column_field: defaultParams.value.column_field,
-    title_field: defaultParams.value.title_field,
-    kanban_columns: defaultParams.value.kanban_columns,
-    kanban_fields: defaultParams.value.kanban_fields,
-    columns: defaultParams.value.columns,
-    rows: defaultParams.value.rows,
-    route_name: route.name,
-    load_default_columns: view.value.load_default_columns,
-  }
-  call('crm.fcrm.doctype.crm_view_settings.crm_view_settings.update', {
-    view: view.value,
-  }).then(() => reloadView())
-}
-
 function updatePageLength(value, loadMore = false) {
+  if (list.value.loading) return
   if (!defaultParams.value) {
     defaultParams.value = getParams()
   }
@@ -890,29 +1047,49 @@ function updatePageLength(value, loadMore = false) {
 }
 
 // View Actions
-const viewActions = (view) => {
-  let isDefault = typeof view.name === 'string'
+const viewActions = (view, close) => {
+  let isStandard = typeof view.name === 'string'
   let _view = getView(view.name)
+
+  if (isStandard) {
+    _view = getView(null, view.name, props.doctype)
+  }
+
+  if (!_view) {
+    _view = {
+      label: view.label,
+      type: view.name,
+      dt: props.doctype,
+    }
+  }
 
   let actions = [
     {
-      group: __('Default Views'),
+      group: __('Actions'),
       hideLabel: true,
       items: [
         {
           label: __('Duplicate'),
           icon: () => h(DuplicateIcon, { class: 'h-4 w-4' }),
-          onClick: () => duplicateView(_view),
+          onClick: () => duplicateView(_view, close),
         },
       ],
     },
   ]
 
-  if (!isDefault && (!_view.public || isManager())) {
+  if (!isDefaultView(_view, isStandard)) {
+    actions[0].items.unshift({
+      label: __('Set as default'),
+      icon: () => h(CheckIcon, { class: 'h-4 w-4' }),
+      onClick: () => setAsDefault(_view),
+    })
+  }
+
+  if (!isStandard && (!_view.public || isManager())) {
     actions[0].items.push({
       label: __('Edit'),
       icon: () => h(EditIcon, { class: 'h-4 w-4' }),
-      onClick: () => editView(_view),
+      onClick: () => editView(_view, close),
     })
 
     if (!_view.public) {
@@ -965,6 +1142,14 @@ const viewActions = (view) => {
   return actions
 }
 
+function isDefaultView(v, isStandard) {
+  let defaultView = getDefaultView()
+
+  if (!defaultView || (isStandard && !v.name)) return false
+
+  return defaultView.name == v.name
+}
+
 const viewModalObj = ref({})
 
 function createView() {
@@ -976,17 +1161,30 @@ function createView() {
   showViewModal.value = true
 }
 
-function duplicateView(v) {
+function setAsDefault(v) {
+  call('crm.fcrm.doctype.crm_view_settings.crm_view_settings.set_as_default', {
+    name: v.name,
+    type: v.type,
+    doctype: v.dt,
+  }).then(() => {
+    reloadView()
+    list.value.reload()
+  })
+}
+
+function duplicateView(v, close) {
   v.label = v.label + __(' (New)')
   viewModalObj.value = v
   viewModalObj.value.mode = 'duplicate'
   showViewModal.value = true
+  close()
 }
 
-function editView(v) {
+function editView(v, close) {
   viewModalObj.value = v
   viewModalObj.value.mode = 'edit'
   showViewModal.value = true
+  close()
 }
 
 function publicView(v) {
@@ -1111,6 +1309,7 @@ defineExpose({
   viewActions,
   viewsDropdownOptions,
   currentView,
+  updateSelections,
 })
 
 // Watchers

@@ -8,7 +8,6 @@ import router from './router'
 import translationPlugin from './translation'
 import { posthogPlugin } from './telemetry'
 import App from './App.vue'
-import * as frappeUI from 'frappe-ui'
 
 import {
   FrappeUI,
@@ -53,12 +52,6 @@ for (let key in globalComponents) {
 }
 
 app.config.globalProperties.$dialog = createDialog
-
-const originalCreateResource = frappeUI.createResource
-frappeUI.createResource = function patchedCreateResource(options) {
-  options.cache = false
-  return originalCreateResource(options)
-}
 
 let socket
 if (import.meta.env.DEV) {

@@ -23,64 +23,32 @@ def get_users():
 		if frappe.session.user == user.name:
 			user.session_user = True
 
-		user.is_manager = "Sales Manager" in frappe.get_roles(user.name) or user.name == "Administrator"
+		user.roles = frappe.get_roles(user.name)
 
-		user.is_agent = frappe.db.exists("CRM Telephony Agent", {"user": user.name})
+		user.role = ""
 
-	return users
+		if "System Manager" in user.roles:
+			user.role = "System Manager"
+		elif "Sales Manager" in user.roles:
+			user.role = "Sales Manager"
+		elif "Sales User" in user.roles:
+			user.role = "Sales User"
+		elif "Guest" in user.roles:
+			user.role = "Guest"
 
+		if frappe.session.user == user.name:
+			user.session_user = True
 
-@frappe.whitelist()
-def get_contacts():
-	contacts = frappe.get_all(
-		"Contact",
-		fields=[
-			"name",
-			"salutation",
-			"first_name",
-			"last_name",
-			"full_name",
-			"gender",
-			"address",
-			"designation",
-			"image",
-			"email_id",
-			"mobile_no",
-			"phone",
-			"company_name",
-			"modified",
-		],
-		order_by="first_name asc",
-		distinct=True,
-	)
+		user.is_telephony_agent = frappe.db.exists("CRM Telephony Agent", {"user": user.name})
 
-	for contact in contacts:
-		contact["email_ids"] = frappe.get_all(
-			"Contact Email",
-			filters={"parenttype": "Contact", "parent": contact.name},
-			fields=["name", "email_id", "is_primary"],
-		)
+	crm_users = []
 
-		contact["phone_nos"] = frappe.get_all(
-			"Contact Phone",
-			filters={"parenttype": "Contact", "parent": contact.name},
-			fields=["name", "phone", "is_primary_phone", "is_primary_mobile_no"],
-		)
+	# crm users are users with role Sales User or Sales Manager
+	for user in users:
+		if "Sales User" in user.roles or "Sales Manager" in user.roles:
+			crm_users.append(user)
 
-	return contacts
-
-
-@frappe.whitelist()
-def get_lead_contacts():
-	lead_contacts = frappe.get_all(
-		"CRM Lead",
-		fields=["name", "lead_name", "mobile_no", "phone", "image", "modified"],
-		filters={"converted": 0},
-		order_by="lead_name asc",
-		distinct=True,
-	)
-
-	return lead_contacts
+	return users, crm_users
 
 
 @frappe.whitelist()

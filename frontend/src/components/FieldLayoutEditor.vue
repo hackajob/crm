@@ -169,13 +169,10 @@
                         <Button
                           class="w-full !h-8 !bg-surface-modal"
                           variant="outline"
-                          @click="togglePopover()"
                           :label="__('Add Field')"
-                        >
-                          <template #prefix>
-                            <FeatherIcon name="plus" class="h-4" />
-                          </template>
-                        </Button>
+                          iconLeft="plus"
+                          @click="togglePopover()"
+                        />
                       </div>
                     </template>
                     <template #item-label="{ option }">
@@ -198,6 +195,7 @@
           class="w-full h-8"
           variant="subtle"
           :label="__('Add Section')"
+          iconLeft="plus"
           @click="
             tabs[tabIndex].sections.push({
               label: __('New Section'),
@@ -206,11 +204,7 @@
               columns: [{ name: 'column_' + getRandom(), fields: [] }],
             })
           "
-        >
-          <template #prefix>
-            <FeatherIcon name="plus" class="h-4" />
-          </template>
-        </Button>
+        />
       </div>
     </div>
   </div>
@@ -226,6 +220,10 @@ import { ref, computed, watch } from 'vue'
 const props = defineProps({
   tabs: Object,
   doctype: String,
+  onlyRequired: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const tabIndex = ref(0)
@@ -249,6 +247,7 @@ const params = computed(() => {
     doctype: props.doctype,
     restricted_fieldtypes: restrictedFieldTypes,
     as_array: true,
+    only_required: props.onlyRequired,
   }
 })
 
@@ -272,13 +271,13 @@ const fields = createResource({
     ]
     let existingFields = []
 
-    for (let tab of props.tabs) {
-      for (let section of tab.sections) {
-        for (let column of section.columns) {
+    props.tabs?.forEach((tab) => {
+      tab.sections?.forEach((section) => {
+        section.columns?.forEach((column) => {
           existingFields = existingFields.concat(column.fields)
-        }
-      }
-    }
+        })
+      })
+    })
 
     return data.filter((field) => {
       return (

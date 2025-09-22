@@ -1,17 +1,22 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { userResource } from '@/stores/user'
 import { sessionStore } from '@/stores/session'
+import { viewsStore } from '@/stores/views'
 
 const routes = [
   {
     path: '/',
-    redirect: { name: 'Leads' },
     name: 'Home',
   },
   {
     path: '/notifications',
     name: 'Notifications',
     component: () => import('@/pages/MobileNotification.vue'),
+  },
+  {
+    path: '/dashboard',
+    name: 'Dashboard',
+    component: () => import('@/pages/Dashboard.vue'),
   },
   {
     alias: '/leads',
@@ -80,16 +85,9 @@ const routes = [
     component: () => import('@/pages/CallLogs.vue'),
   },
   {
-    alias: '/email-templates',
-    path: '/email-templates/view/:viewType?',
-    name: 'Email Templates',
-    component: () => import('@/pages/EmailTemplates.vue'),
-  },
-  {
-    path: '/email-templates/:emailTemplateId',
-    name: 'Email Template',
-    component: () => import('@/pages/EmailTemplate.vue'),
-    props: true,
+    path: '/welcome',
+    name: 'Welcome',
+    component: () => import('@/pages/Welcome.vue'),
   },
   {
     path: '/:invalidpath',
@@ -113,7 +111,23 @@ router.beforeEach(async (to, from, next) => {
   isLoggedIn && (await userResource.promise)
 
   if (to.name === 'Home' && isLoggedIn) {
-    next({ name: 'Leads' })
+    const { views, getDefaultView } = viewsStore()
+    await views.promise
+
+    let defaultView = getDefaultView()
+    if (!defaultView) {
+      next({ name: 'Leads' })
+      return
+    }
+
+    let { route_name, type, name, is_standard } = defaultView
+    route_name = route_name || 'Leads'
+
+    if (name && !is_standard) {
+      next({ name: route_name, params: { viewType: type }, query: { view: name } })
+    } else {
+      next({ name: route_name, params: { viewType: type } })
+    }
   } else if (!isLoggedIn) {
     window.location.href = '/login?redirect-to=/crm'
   } else if (to.matched.length === 0) {

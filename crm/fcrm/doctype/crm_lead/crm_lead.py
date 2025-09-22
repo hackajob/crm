@@ -125,13 +125,14 @@ class CRMLead(Document):
 			elif user != agent:
 				frappe.share.remove(self.doctype, self.name, user)
 
-	def create_contact(self, throw=True):
+	def create_contact(self, existing_contact=None, throw=True):
 		if not self.lead_name:
 			self.set_full_name()
 			self.set_lead_name()
 
-		existing_contact = self.contact_exists(throw)
+		existing_contact = existing_contact or self.contact_exists(throw)
 		if existing_contact:
+			self.update_lead_contact(existing_contact)
 			return existing_contact
 
 		contact = frappe.new_doc("Contact")
@@ -161,12 +162,15 @@ class CRMLead(Document):
 
 		return contact.name
 
-	def create_organization(self):
-		if not self.organization:
+	def create_organization(self, existing_organization=None):
+		if not self.organization and not existing_organization:
 			return
 
-		existing_organization = frappe.db.exists("CRM Organization", {"organization_name": self.organization})
+		existing_organization = existing_organization or frappe.db.exists(
+			"CRM Organization", {"organization_name": self.organization}
+		)
 		if existing_organization:
+			self.db_set("organization", existing_organization)
 			return existing_organization
 
 		organization = frappe.new_doc("CRM Organization")
@@ -181,6 +185,20 @@ class CRMLead(Document):
 		)
 		organization.insert(ignore_permissions=True)
 		return organization.name
+
+	def update_lead_contact(self, contact):
+		contact = frappe.get_cached_doc("Contact", contact)
+		frappe.db.set_value(
+			"CRM Lead",
+			self.name,
+			{
+				"salutation": contact.salutation,
+				"first_name": contact.first_name,
+				"last_name": contact.last_name,
+				"email": contact.email_id,
+				"mobile_no": contact.mobile_no,
+			},
+		)
 
 	def contact_exists(self, throw=True):
 		email_exist = frappe.db.exists("Contact Email", {"email_id": self.email})
@@ -207,8 +225,8 @@ class CRMLead(Document):
 
 		return False
 
-	def create_deal(self, contact, organization):
-		deal = frappe.new_doc("CRM Deal")
+	def create_deal(self, contact, organization, deal=None):
+		new_deal = frappe.new_doc("CRM Deal")
 
 		lead_deal_map = {
 			"lead_owner": "deal_owner",
@@ -221,7 +239,6 @@ class CRMLead(Document):
 			"HTML",
 			"Button",
 			"Attach",
-			"Table",
 		]
 		restricted_map_fields = [
 			"name",
@@ -243,6 +260,7 @@ class CRMLead(Document):
 			"first_responded_on",
 			"communication_status",
 			"sla_creation",
+			"status_change_log",
 		]
 
 		for field in self.meta.fields:
@@ -255,13 +273,13 @@ class CRMLead(Document):
 			if field.fieldname in lead_deal_map:
 				fieldname = lead_deal_map[field.fieldname]
 
-			if hasattr(deal, fieldname):
+			if hasattr(new_deal, fieldname):
 				if fieldname == "organization":
-					deal.update({fieldname: organization})
+					new_deal.update({fieldname: organization})
 				else:
-					deal.update({fieldname: self.get(field.fieldname)})
+					new_deal.update({fieldname: self.get(field.fieldname)})
 
-		deal.update(
+		new_deal.update(
 			{
 				"lead": self.name,
 				"contacts": [{"contact": contact}],
@@ -269,7 +287,7 @@ class CRMLead(Document):
 		)
 
 		if self.first_responded_on:
-			deal.update(
+			new_deal.update(
 				{
 					"sla_creation": self.sla_creation,
 					"response_by": self.response_by,
@@ -280,8 +298,11 @@ class CRMLead(Document):
 				}
 			)
 
-		deal.insert(ignore_permissions=True)
-		return deal.name
+		if deal:
+			new_deal.update(deal)
+
+		new_deal.insert(ignore_permissions=True)
+		return new_deal.name
 
 	def set_sla(self):
 		"""
@@ -307,8 +328,8 @@ class CRMLead(Document):
 		if sla:
 			sla.apply(self)
 
-	def convert_to_deal(self):
-		return convert_to_deal(lead=self.name, doc=self)
+	def convert_to_deal(self, deal=None):
+		return convert_to_deal(lead=self.name, doc=self, deal=deal)
 
 	@staticmethod
 	def get_non_filterable_fields():
@@ -390,7 +411,7 @@ class CRMLead(Document):
 
 
 @frappe.whitelist()
-def convert_to_deal(lead, doc=None):
+def convert_to_deal(lead, doc=None, deal=None, existing_contact=None, existing_organization=None):
 	if not (doc and doc.flags.get("ignore_permissions")) and not frappe.has_permission(
 		"CRM Lead", "write", lead
 	):
@@ -402,7 +423,7 @@ def convert_to_deal(lead, doc=None):
 	lead.db_set("converted", 1)
 	if lead.sla and frappe.db.exists("CRM Communication Status", "Replied"):
 		lead.db_set("communication_status", "Replied")
-	contact = lead.create_contact(False)
-	organization = lead.create_organization()
-	deal = lead.create_deal(contact, organization)
-	return deal
+	contact = lead.create_contact(existing_contact, False)
+	organization = lead.create_organization(existing_organization)
+	_deal = lead.create_deal(contact, organization, deal)
+	return _deal

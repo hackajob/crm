@@ -124,17 +124,39 @@ def get_quotation_url(crm_deal, organization):
 		frappe.throw(_("ERPNext is not integrated with the CRM"))
 
 	contact = get_contact(crm_deal)
-	address = get_organization_address(organization).get("name") if organization else None
+	address = get_organization_address(organization)
+	address = address.get("name") if address else None
 
 	if not erpnext_crm_settings.is_erpnext_in_different_site:
-		quotation_url = get_url_to_list("Quotation")
-		return f"{quotation_url}/new?quotation_to=CRM Deal&crm_deal={crm_deal}&party_name={crm_deal}&company={erpnext_crm_settings.erpnext_company}&contact_person={contact}&customer_address={address}"
+		base_url = f"{get_url_to_list('Quotation')}/new"
+		params = {
+			"quotation_to": "CRM Deal",
+			"crm_deal": crm_deal,
+			"party_name": crm_deal,
+			"company": erpnext_crm_settings.erpnext_company,
+			"contact_person": contact,
+			"customer_address": address
+		}
 	else:
 		site_url = erpnext_crm_settings.get("erpnext_site_url")
-		quotation_url = f"{site_url}/app/quotation"
-
+		base_url = f"{site_url}/app/quotation/new"
 		prospect = create_prospect_in_remote_site(crm_deal, erpnext_crm_settings)
-		return f"{quotation_url}/new?quotation_to=Prospect&crm_deal={crm_deal}&party_name={prospect}&company={erpnext_crm_settings.erpnext_company}&contact_person={contact}&customer_address={address}"
+		params = {
+			"quotation_to": "Prospect",
+			"crm_deal": crm_deal,
+			"party_name": prospect,
+			"company": erpnext_crm_settings.erpnext_company,
+			"contact_person": contact,
+			"customer_address": address
+		}
+	
+	# Filter out None values and build query string
+	query_string = "&".join(
+		f"{key}={value}" for key, value in params.items() 
+		if value is not None
+	)
+
+	return f"{base_url}?{query_string}"
 
 
 def create_prospect_in_remote_site(crm_deal, erpnext_crm_settings):
@@ -142,7 +164,11 @@ def create_prospect_in_remote_site(crm_deal, erpnext_crm_settings):
 		client = get_erpnext_site_client(erpnext_crm_settings)
 		doc = frappe.get_cached_doc("CRM Deal", crm_deal)
 		contacts = get_contacts(doc)
-		address = get_organization_address(doc.organization)
+		address = get_organization_address(doc.organization) or None
+
+		if address and not isinstance(address, dict):
+			address = address.as_dict()
+
 		return client.post_api(
 			"erpnext.crm.frappe_crm_api.create_prospect_against_crm_deal",
 			{
@@ -155,9 +181,9 @@ def create_prospect_in_remote_site(crm_deal, erpnext_crm_settings):
 				"industry": doc.industry,
 				"website": doc.website,
 				"annual_revenue": doc.annual_revenue,
-				"contacts": json.dumps(contacts),
+				"contacts": json.dumps(contacts) if contacts else None,
 				"erpnext_company": erpnext_crm_settings.erpnext_company,
-				"address": address.as_dict() if address else None,
+				"address": json.dumps(address) if address else None,
 			},
 		)
 	except Exception:
@@ -259,7 +285,7 @@ def create_customer_in_remote_site(customer, erpnext_crm_settings):
 @frappe.whitelist()
 def get_crm_form_script():
 	return """
-async function setupForm({ doc, call, $dialog, updateField, createToast }) {
+async function setupForm({ doc, call, $dialog, updateField, toast }) {
 	let actions = [];
 	let is_erpnext_integration_enabled = await call("frappe.client.get_single_value", {doctype: "ERPNext CRM Settings", field: "enabled"});
 	if (!["Lost", "Won"].includes(doc?.status) && is_erpnext_integration_enabled) {
