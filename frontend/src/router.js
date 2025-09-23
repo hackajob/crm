@@ -14,11 +14,6 @@ const routes = [
     component: () => import('@/pages/MobileNotification.vue'),
   },
   {
-    path: '/dashboard',
-    name: 'Dashboard',
-    component: () => import('@/pages/Dashboard.vue'),
-  },
-  {
     alias: '/leads',
     path: '/leads/view/:viewType?',
     name: 'Leads',
@@ -111,23 +106,9 @@ router.beforeEach(async (to, from, next) => {
   isLoggedIn && (await userResource.promise)
 
   if (to.name === 'Home' && isLoggedIn) {
-    const { views, getDefaultView } = viewsStore()
-    await views.promise
-
-    let defaultView = getDefaultView()
-    if (!defaultView) {
-      next({ name: 'Leads' })
-      return
-    }
-
-    let { route_name, type, name, is_standard } = defaultView
-    route_name = route_name || 'Leads'
-
-    if (name && !is_standard) {
-      next({ name: route_name, params: { viewType: type }, query: { view: name } })
-    } else {
-      next({ name: route_name, params: { viewType: type } })
-    }
+    // Always redirect to Leads as the default page
+    next({ name: 'Leads' })
+    return
   } else if (!isLoggedIn) {
     window.location.href = '/login?redirect-to=/crm'
   } else if (to.matched.length === 0) {

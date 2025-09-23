@@ -140,7 +140,6 @@
 </template>
 
 <script setup>
-import LucideLayoutDashboard from '~icons/lucide/layout-dashboard'
 import CRMLogo from '@/components/Icons/CRMLogo.vue'
 import InviteIcon from '@/components/Icons/InviteIcon.vue'
 import ConvertIcon from '@/components/Icons/ConvertIcon.vue'
@@ -198,11 +197,6 @@ const isFCSite = ref(window.is_fc_site)
 const isDemoSite = ref(window.is_demo_site)
 
 const links = [
-  {
-    label: 'Dashboard',
-    icon: LucideLayoutDashboard,
-    to: 'Dashboard',
-  },
   {
     label: 'Leads',
     icon: LeadsIcon,
