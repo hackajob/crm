@@ -32,7 +32,7 @@
               >
                 <template
                   v-for="field in section.columns[0].fields || []"
-                  :key="field.fieldname"
+                  :key="field?.fieldname || field"
                 >
                   <div
                     v-if="field.visible"
@@ -262,7 +262,7 @@
                           v-else-if="field.fieldtype === 'Table MultiSelect'"
                           class="form-control"
                           type="text"
-                          :value="data[field.fieldname].map(item => ('value' in item) ? item.value : item.name).join('; ')"
+                          :value="displayTableMultiSelect(field.fieldname)"
                           :placeholder="field.placeholder"
                           :disabled="true"
                         />
@@ -381,9 +381,11 @@ const _sections = computed(() => {
   let editButtonAdded = false
   return props.sections.map((section) => {
     if (section.columns?.length) {
-      section.columns[0].fields = section.columns[0].fields.map((field) => {
-        return parsedField(field)
-      })
+      section.columns[0].fields = (section.columns[0].fields || [])
+        .filter(Boolean)
+        .map((field) => {
+          return parsedField(field)
+        })
     }
     let _section = parsedSection(section, editButtonAdded)
     if (_section.showEditButton) {
@@ -394,6 +396,17 @@ const _sections = computed(() => {
 })
 
 function parsedField(field) {
+  // Accept both full field objects and string fieldnames
+  if (typeof field === 'string') {
+    return {
+      fieldname: field,
+      label: field,
+      fieldtype: 'Data',
+      read_only: true,
+      placeholder: field,
+      visible: true,
+    }
+  }
   if (field.fieldtype == 'Select' && typeof field.options === 'string') {
     field.options = field.options.split('\n').map((option) => {
       return { label: option, value: option }
@@ -425,6 +438,23 @@ function parsedField(field) {
 
   _field.visible = isFieldVisible(_field)
   return _field
+}
+
+function displayTableMultiSelect(fieldname) {
+  const val = doc.value?.[fieldname]
+  if (!val) return ''
+  try {
+    // val can be array of objects with value/name, or JSON string
+    const arr = Array.isArray(val) ? val : JSON.parse(val)
+    if (!Array.isArray(arr)) return ''
+    return arr
+      .map((item) => (item && (item.value || item.name || item.label || '')))
+      .filter(Boolean)
+      .join(', ')
+  } catch (e) {
+    // fallback to raw value
+    return typeof val === 'string' ? val : ''
+  }
 }
 
 const instance = getCurrentInstance()
