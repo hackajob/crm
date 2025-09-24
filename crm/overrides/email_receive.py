@@ -1,3 +1,4 @@
+import frappe
 import _socket
 from frappe.email.receive import EmailServer
 from frappe.utils import cint
