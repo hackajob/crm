@@ -126,7 +126,7 @@ function saveChanges() {
       section.columns.forEach((column) => {
         if (!column.fields) return
         column.fields = column.fields
-          .map((field) => field.fieldname)
+          .map((field) => (typeof field === 'string' ? field : field.fieldname))
           .filter(Boolean)
       })
     })
