@@ -1,6 +1,7 @@
 # Copyright (c) 2022, Frappe Technologies Pvt. Ltd. and Contributors
 # MIT License. See license.txt
 import click
+import os
 import frappe
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
@@ -25,7 +26,24 @@ def after_install(force=False):
 	add_standard_dropdown_items()
 	add_default_scripts()
 	create_default_manager_dashboard(force)
+	ensure_private_files_dir()
 	frappe.db.commit()
+
+
+def ensure_private_files_dir():
+	"""Ensure `<site>/private/files` exists for the current site.
+
+	Run from install/migrate hooks to prepare attachment storage eagerly.
+	Safe to call repeatedly.
+	"""
+	try:
+		path = os.path.join(frappe.get_site_path(), "private", "files")
+		os.makedirs(path, exist_ok=True)
+		return path
+	except Exception:
+		# Don't block install/migrate on non-critical directory creation issues
+		frappe.log_error(frappe.get_traceback(), title="Ensuring private files directory exists failed")
+		return None
 
 
 def add_default_lead_statuses():

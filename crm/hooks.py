@@ -262,7 +262,10 @@ call_log_events = [
 # "crm.auth.validate"
 # ]
 
-after_migrate = ["crm.fcrm.doctype.fcrm_settings.fcrm_settings.after_migrate"]
+after_migrate = [
+	"crm.fcrm.doctype.fcrm_settings.fcrm_settings.after_migrate",
+	"crm.install.ensure_private_files_dir",
+]
 
 standard_dropdown_items = [
 	{
