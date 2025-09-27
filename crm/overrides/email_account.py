@@ -30,11 +30,25 @@ def custom_get_inbound_mails(self) -> list[InboundMail]:
     try:
         email_server = self.get_incoming_server(in_receive=True, email_sync_rule=email_sync_rule)
         if self.use_imap:
+            # If connection failed (authentication / network) email_server may not have imap attribute
+            if not hasattr(email_server, "imap"):
+                # Connection was not established; abort gracefully
+                return []
             for folder in self.imap_folder:
-                if email_server.select_imap_folder(folder.folder_name):
-                    email_server.settings["uid_validity"] = folder.uidvalidity
-                    messages = email_server.get_messages(folder=f'{folder.folder_name}') or {}
-                    process_mail(messages, folder.append_to)
+                try:
+                    if email_server.select_imap_folder(folder.folder_name):
+                        email_server.settings["uid_validity"] = folder.uidvalidity
+                        messages = email_server.get_messages(folder=f'{folder.folder_name}') or {}
+                        process_mail(messages, folder.append_to)
+                except AttributeError:
+                    # Rare race / dropped connection: attempt a reconnect once
+                    email_server.connect()
+                    if not hasattr(email_server, "imap"):
+                        return []
+                    if email_server.select_imap_folder(folder.folder_name):
+                        email_server.settings["uid_validity"] = folder.uidvalidity
+                        messages = email_server.get_messages(folder=f'{folder.folder_name}') or {}
+                        process_mail(messages, folder.append_to)
         else:
             messages = email_server.get_messages() or {}
             process_mail(messages)
