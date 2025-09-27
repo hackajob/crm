@@ -27,22 +27,25 @@
     <div v-if="renderedOnce || expanded" class="flex flex-col gap-2">
       <div v-show="expanded && olderReady" class="flex flex-col gap-2">
         <div v-for="(msg, idx) in older" :key="msg.name" class="opacity-90">
-        <div class="cursor-pointer flex flex-col rounded-md shadow bg-surface-cards px-3 py-1.5 text-base">
-          <div class="-mb-0.5 flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2 truncate text-ink-gray-9">
-              <span>
-                {{ senderName(msg) }}
-              </span>
-            </div>
-            <Tooltip :text="formatDate(msg.communication_date || msg.creation)">
-              <div class="text-sm text-ink-gray-5">
-                {{ __(timeAgo(msg.communication_date || msg.creation)) }}
+          <div
+            class="cursor-pointer flex flex-col rounded-md shadow px-3 py-1.5 text-base sms-bubble"
+            :class="msg.data.sent_or_received === 'Sent' ? 'sms-sent' : 'sms-received'"
+          >
+            <div class="-mb-0.5 flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2 truncate text-ink-gray-9">
+                <span>
+                  {{ senderName(msg) }}
+                </span>
               </div>
-            </Tooltip>
+              <Tooltip :text="formatDate(msg.communication_date || msg.creation)">
+                <div class="text-sm text-ink-gray-5">
+                  {{ __(timeAgo(msg.communication_date || msg.creation)) }}
+                </div>
+              </Tooltip>
+            </div>
+            <div class="border-0 border-t mt-3 mb-1 border-outline-gray-modals" />
+            <div class="text-ink-gray-8 whitespace-pre-wrap">{{ msg.data.content }}</div>
           </div>
-          <div class="border-0 border-t mt-3 mb-1 border-outline-gray-modals" />
-          <div class="text-ink-gray-8 whitespace-pre-wrap">{{ msg.data.content }}</div>
-        </div>
           <div v-if="idx < older.length - 1" class="border-t border-outline-gray-modals my-1"></div>
         </div>
       </div>
@@ -52,7 +55,10 @@
     </div>
 
     <!-- Latest message -->
-    <div class="cursor-pointer flex flex-col rounded-md shadow bg-surface-cards px-3 py-1.5 text-base">
+    <div
+      class="cursor-pointer flex flex-col rounded-md shadow px-3 py-1.5 text-base sms-bubble"
+      :class="latest.data.sent_or_received === 'Sent' ? 'sms-sent' : 'sms-received'"
+    >
       <div class="-mb-0.5 flex items-center justify-between gap-2">
         <div class="flex items-center gap-2 truncate text-ink-gray-9">
           <span>
@@ -147,4 +153,8 @@ function onOlderItemLoaded() {
 }
 </script>
 
-<style scoped></style>
+<style scoped>
+.sms-bubble.sms-sent { background-color: var(--sms-sent-bg, #eef2ff); }
+.dark .sms-bubble.sms-sent { background-color: var(--sms-sent-bg-dark, rgba(99, 102, 241, 0.15)); }
+.sms-bubble.sms-received { background-color: var(--sms-received-bg, var(--surface-cards, #ffffff)); }
+</style>

@@ -450,7 +450,10 @@
         </div>
         <div v-if="activity.activity_type == 'communication'" class="pb-5 mt-px">
           <template v-if="activity.data?.communication_medium === 'SMS'">
-            <div class="cursor-pointer flex flex-col rounded-md shadow bg-surface-cards px-3 py-1.5 text-base">
+            <div
+              class="cursor-pointer flex flex-col rounded-md shadow px-3 py-1.5 text-base sms-bubble"
+              :class="activity.data.sent_or_received === 'Sent' ? 'sms-sent' : 'sms-received'"
+            >
               <div class="-mb-0.5 flex items-center justify-between gap-2">
                 <div class="flex items-center gap-2 truncate text-ink-gray-9">
                   <span>
@@ -1276,3 +1279,16 @@ const callActions = computed(() => {
 
 defineExpose({ emailBox, all_activities, changeTabTo })
 </script>
+
+<style scoped>
+/* SMS bubble color differentiation */
+.sms-bubble.sms-sent {
+  background-color: var(--sms-sent-bg, #eef2ff);
+}
+.dark .sms-bubble.sms-sent {
+  background-color: var(--sms-sent-bg-dark, rgba(99, 102, 241, 0.15));
+}
+.sms-bubble.sms-received {
+  background-color: var(--sms-received-bg, var(--surface-cards, #ffffff));
+}
+</style>

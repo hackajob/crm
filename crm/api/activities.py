@@ -120,7 +120,19 @@ def get_deal_activities(name):
 		}
 		activities.append(activity)
 
-	for communication in docinfo.communications + docinfo.automated_messages:
+	# Bulk fetch missing sent_or_received for deal communications to avoid N queries
+	deal_comms = docinfo.communications + docinfo.automated_messages
+	missing_names = [c.name for c in deal_comms if getattr(c, "sent_or_received", None) is None]
+	sent_map = {}
+	if missing_names:
+		for r in frappe.db.get_all(
+			"Communication",
+			filters={"name": ("in", missing_names)},
+			fields=["name", "sent_or_received"],
+		):
+			sent_map[r.name] = r.sent_or_received
+
+	for communication in deal_comms:
 		activity = {
 			"activity_type": "communication",
 			"communication_type": communication.communication_type,
@@ -139,6 +151,7 @@ def get_deal_activities(name):
 				"delivery_status": communication.delivery_status,
 				"communication_date": communication.communication_date,
 				"communication_medium": getattr(communication, "communication_medium", None),
+				"sent_or_received": sent_map.get(communication.name),
 			},
 			"is_lead": False,
 		}
@@ -254,7 +267,18 @@ def get_lead_activities(name):
 		}
 		activities.append(activity)
 
-	for communication in docinfo.communications + docinfo.automated_messages:
+	# Bulk fetch missing sent_or_received for lead communications to avoid N queries
+	lead_comms = docinfo.communications + docinfo.automated_messages
+	missing_names = [c.name for c in lead_comms if getattr(c, "sent_or_received", None) is None]
+	sent_map = {}
+	if missing_names:
+		for r in frappe.db.get_all(
+			"Communication",
+			filters={"name": ("in", missing_names)},
+			fields=["name", "sent_or_received"],
+		):
+			sent_map[r.name] = r.sent_or_received
+	for communication in lead_comms:
 		activity = {
 			"activity_type": "communication",
 			"communication_type": communication.communication_type,
@@ -273,6 +297,7 @@ def get_lead_activities(name):
 				"delivery_status": communication.delivery_status,
 				"communication_date": communication.communication_date,
 				"communication_medium": getattr(communication, "communication_medium", None),
+				"sent_or_received": sent_map.get(communication.name),
 			},
 			"is_lead": True,
 		}
