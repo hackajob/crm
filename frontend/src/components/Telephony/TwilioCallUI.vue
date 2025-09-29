@@ -20,7 +20,14 @@
           :class="onCall || calling ? '' : 'pulse'"
         />
         <div class="flex flex-col items-center justify-center gap-1">
-          <div class="text-xl font-medium">
+          <div
+            class="text-xl font-medium"
+            :class="(contact?.lead || contact?.deal) ? 'cursor-pointer hover:underline' : ''"
+            role="button"
+            tabindex="0"
+            @click="openDealOrLead"
+            @keyup.enter="openDealOrLead"
+          >
             {{ contact?.full_name ?? __('Unknown') }}
           </div>
           <div class="text-sm text-ink-gray-5">{{ contact?.mobile_no }}</div>
@@ -119,7 +126,14 @@
         :label="contact.full_name"
         class="relative flex !h-5 !w-5 items-center justify-center"
       />
-      <div class="max-w-[120px] truncate">
+      <div
+        class="max-w-[120px] truncate"
+        :class="(contact?.lead || contact?.deal) ? 'cursor-pointer hover:underline' : ''"
+        role="button"
+        tabindex="0"
+        @click.stop="openDealOrLead"
+        @keyup.enter.stop="openDealOrLead"
+      >
         {{ contact?.full_name ?? __('Unknown') }}
       </div>
     </div>
@@ -185,6 +199,7 @@ import { useDraggable, useWindowSize } from '@vueuse/core'
 import { capture } from '@/telemetry'
 import { Avatar, call, createResource } from 'frappe-ui'
 import { ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 let device = ''
 let log = ref('Connecting...')
@@ -206,6 +221,17 @@ const contact = ref({
   image: '',
   mobile_no: '',
 })
+
+const router = useRouter()
+
+function openDealOrLead() {
+  if (!contact.value) return
+  if (contact.value.deal) {
+    router.push({ name: 'Deal', params: { dealId: contact.value.deal } })
+  } else if (contact.value.lead) {
+    router.push({ name: 'Lead', params: { leadId: contact.value.lead } })
+  }
+}
 
 watch(phoneNumber, (value) => {
   if (!value) return
