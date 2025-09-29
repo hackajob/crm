@@ -71,6 +71,7 @@
                   :is="getValueControl(f)"
                   v-model="f.value"
                   @change="(v) => updateValue(v, f)"
+                  :key="f.fieldname + '-' + f.operator"
                   :placeholder="__('John Doe')"
                 />
               </div>
@@ -104,6 +105,7 @@
                     :is="getValueControl(f)"
                     v-model="f.value"
                     @change="(v) => updateValue(v, f)"
+                    :key="f.fieldname + '-' + f.operator"
                     :placeholder="__('John Doe')"
                   />
                 </div>
