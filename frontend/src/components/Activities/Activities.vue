@@ -130,7 +130,14 @@
           <div class="grid grid-cols-[30px_minmax(auto,_1fr)] gap-2 sm:gap-4">
             <div class="relative flex justify-center before:absolute before:left-[50%] before:top-0 before:-z-10 before:border-l before:border-outline-gray-modals before:h-full">
               <div class="z-10 flex h-8 w-7 items-center justify-center bg-surface-white">
-                <UserAvatar :user="thread.items[thread.items.length - 1].data.sender" size="md" />
+                <component
+                  :is="
+                    (thread.items[thread.items.length - 1].data.sent_or_received || 'Received') === 'Sent'
+                      ? OutboundSmsIcon
+                      : InboundSmsIcon
+                  "
+                  class="text-ink-gray-8"
+                />
               </div>
             </div>
             <div class="pb-5 mt-px w-full">
@@ -154,7 +161,19 @@
               v-if="item.kind === 'email_thread' || item.kind === 'sms_thread'"
               class="z-10 flex h-8 w-7 items-center justify-center bg-surface-white"
             >
-              <UserAvatar :user="item.thread.items[item.thread.items.length - 1].data.sender" size="md" />
+              <template v-if="item.kind === 'email_thread'">
+                <UserAvatar :user="item.thread.items[item.thread.items.length - 1].data.sender" size="md" />
+              </template>
+              <template v-else>
+                <component
+                  :is="
+                    (item.thread.items[item.thread.items.length - 1].data.sent_or_received || 'Received') === 'Sent'
+                      ? OutboundSmsIcon
+                      : InboundSmsIcon
+                  "
+                  class="text-ink-gray-8"
+                />
+              </template>
             </div>
             <div
               v-else-if="item.kind === 'note'"
@@ -785,6 +804,8 @@ import TaskArea from '@/components/Activities/TaskArea.vue'
 import AttachmentArea from '@/components/Activities/AttachmentArea.vue'
 import DataFields from '@/components/Activities/DataFields.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
+import InboundSmsIcon from '@/components/Icons/InboundSmsIcon.vue'
+import OutboundSmsIcon from '@/components/Icons/OutboundSmsIcon.vue'
 import ActivityIcon from '@/components/Icons/ActivityIcon.vue'
 import Email2Icon from '@/components/Icons/Email2Icon.vue'
 import DetailsIcon from '@/components/Icons/DetailsIcon.vue'
