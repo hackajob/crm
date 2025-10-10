@@ -493,11 +493,21 @@ def get_data(
 					sql_query,
 					as_dict=True
 				)
-				ids = ""
+				ids_str = ""
 				if result:
-					ids = result[0].get("ids")
-				if ids:
-					filters["name"] = ["in", ids]
+					ids_str = (result[0].get("ids") or "").strip()
+				ids_list = [i.strip() for i in ids_str.split(",") if i and i.strip()]
+				if ids_list:
+					existing = filters.get("name")
+					if isinstance(existing, list) and len(existing) == 2 and existing[0] == "in":
+						existing_vals = existing[1]
+						if isinstance(existing_vals, list):
+							combined = list(set(existing_vals).intersection(set(ids_list)))
+						else:
+							combined = []
+						filters["name"] = ["in", combined if combined else "no-results"]
+					else:
+						filters["name"] = ["in", ids_list]
 				else:
 					filters["name"] = ["in", "no-results"]
 
