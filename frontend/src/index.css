@@ -22,3 +22,19 @@
 			prose-th:relative;
 	}
 }
+
+:root {
+  --sms-sent-bg: rgb(236 243 254);
+  --sms-received-bg: rgb(242 242 242);
+  --sms-sent-text: var(--ink-gray-8, #475569);
+	--sms-received-text: var(--ink-gray-8, #475569);
+	--sms-divider-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] {
+  --sms-sent-bg: rgb(124 172 248);
+  --sms-received-bg: rgb(48 48 48);
+  --sms-sent-text: rgb(5, 5, 5);
+	--sms-received-text: rgb(255 255 255);
+	--sms-divider-color: rgba(255, 255, 255, 0.14);
+}

@@ -474,24 +474,24 @@
               :class="activity.data.sent_or_received === 'Sent' ? 'sms-sent' : 'sms-received'"
             >
               <div class="-mb-0.5 flex items-center justify-between gap-2">
-                <div class="flex items-center gap-2 truncate text-ink-gray-9">
+                <div class="flex items-center gap-2 truncate text-ink-gray-9 sms-title">
                   <component
                     :is="activity.data.sent_or_received === 'Sent' ? OutboundSmsIcon : InboundSmsIcon"
-                    class="text-ink-gray-8"
+                    class="text-ink-gray-8 sms-icon"
                   />
                   <span class="truncate">
                     {{ activity.data.sender_full_name || activity.data.sender || __('You') }}
-                    {{ activity.data.sent_or_received === 'Sent' ? __('sent an SMS') : __('has reached out') }}
+                    {{ activity.data.sent_or_received === 'Sent' ? __('sent a message') : __('has reached out') }}
                   </span>
                 </div>
                 <Tooltip :text="formatDate(activity.communication_date || activity.creation)">
-                  <div class="text-sm text-ink-gray-5">
+                  <div class="text-sm text-ink-gray-5 sms-meta">
                     {{ __(timeAgo(activity.communication_date || activity.creation)) }}
                   </div>
                 </Tooltip>
               </div>
-              <div class="border-0 border-t mt-3 mb-1 border-outline-gray-modals" />
-              <div class="text-ink-gray-8 whitespace-pre-wrap">{{ activity.data.content }}</div>
+              <div class="border-0 border-t mt-3 mb-1 sms-divider" />
+              <div class="sms-text whitespace-pre-wrap">{{ activity.data.content }}</div>
             </div>
           </template>
           <EmailArea v-else :activity="activity" :emailBox="emailBox" />
@@ -1304,13 +1304,18 @@ defineExpose({ emailBox, all_activities, changeTabTo })
 
 <style scoped>
 /* SMS bubble color differentiation */
-.sms-bubble.sms-sent {
-  background-color: var(--sms-sent-bg, #eef2ff);
-}
-.dark .sms-bubble.sms-sent {
-  background-color: var(--sms-sent-bg-dark, rgba(99, 102, 241, 0.15));
-}
-.sms-bubble.sms-received {
-  background-color: var(--sms-received-bg, var(--surface-cards, #ffffff));
-}
+.sms-bubble.sms-sent { background-color: var(--sms-sent-bg); }
+.sms-bubble.sms-received { background-color: var(--sms-received-bg); }
+/* Content text color */
+.sms-bubble .sms-text { color: var(--sms-sent-text); }
+.sms-bubble.sms-received .sms-text { color: var(--sms-received-text); }
+/* Title, meta (date), and icon color to match bubble theme */
+.sms-bubble.sms-sent .sms-title,
+.sms-bubble.sms-sent .sms-meta,
+.sms-bubble.sms-sent .sms-icon { color: var(--sms-sent-text); }
+.sms-bubble.sms-received .sms-title,
+.sms-bubble.sms-received .sms-meta,
+.sms-bubble.sms-received .sms-icon { color: var(--sms-received-text); }
+/* Muted divider for light/dark */
+.sms-divider { border-color: var(--sms-divider-color); }
 </style>
