@@ -475,12 +475,13 @@
             >
               <div class="-mb-0.5 flex items-center justify-between gap-2">
                 <div class="flex items-center gap-2 truncate text-ink-gray-9">
-                  <span>
-                    {{
-                      activity.data.sender_full_name === currentUser.full_name
-                        ? __('You')
-                        : activity.data.sender_full_name || activity.data.sender || __('You')
-                    }}
+                  <component
+                    :is="activity.data.sent_or_received === 'Sent' ? OutboundSmsIcon : InboundSmsIcon"
+                    class="text-ink-gray-8"
+                  />
+                  <span class="truncate">
+                    {{ activity.data.sender_full_name || activity.data.sender || __('You') }}
+                    {{ activity.data.sent_or_received === 'Sent' ? __('sent an SMS') : __('has reached out') }}
                   </span>
                 </div>
                 <Tooltip :text="formatDate(activity.communication_date || activity.creation)">

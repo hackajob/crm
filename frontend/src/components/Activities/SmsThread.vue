@@ -33,8 +33,13 @@
           >
             <div class="-mb-0.5 flex items-center justify-between gap-2">
               <div class="flex items-center gap-2 truncate text-ink-gray-9">
-                <span>
+                <component
+                  :is="msg.data.sent_or_received === 'Sent' ? OutboundSmsIcon : InboundSmsIcon"
+                  class="text-ink-gray-8"
+                />
+                <span class="truncate">
                   {{ senderName(msg) }}
+                  {{ msg.data.sent_or_received === 'Sent' ? __('sent an SMS') : __('has reached out') }}
                 </span>
               </div>
               <Tooltip :text="formatDate(msg.communication_date || msg.creation)">
@@ -61,8 +66,13 @@
     >
       <div class="-mb-0.5 flex items-center justify-between gap-2">
         <div class="flex items-center gap-2 truncate text-ink-gray-9">
-          <span>
+          <component
+            :is="latest.data.sent_or_received === 'Sent' ? OutboundSmsIcon : InboundSmsIcon"
+            class="text-ink-gray-8"
+          />
+          <span class="truncate">
             {{ senderName(latest) }}
+            {{ latest.data.sent_or_received === 'Sent' ? __('sent an SMS') : __('has reached out') }}
           </span>
         </div>
         <Tooltip :text="formatDate(latest.communication_date || latest.creation)">
@@ -82,6 +92,8 @@ import { Button, Tooltip } from 'frappe-ui'
 import { computed, ref, nextTick } from 'vue'
 import { timeAgo, formatDate } from '@/utils'
 import { usersStore } from '@/stores/users'
+import InboundSmsIcon from '@/components/Icons/InboundSmsIcon.vue'
+import OutboundSmsIcon from '@/components/Icons/OutboundSmsIcon.vue'
 
 const { getUser } = usersStore()
 
