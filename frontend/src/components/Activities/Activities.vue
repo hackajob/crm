@@ -217,7 +217,7 @@
             <SmsThread :thread="item.thread" />
           </div>
           <div v-else-if="item.kind === 'note'" class="pb-5 mt-px w-full cursor-pointer" @click="modalRef.showNote(item.note)">
-            <NoteArea :note="item.note" v-model="all_activities" />
+            <NoteArea :note="item.note" v-model="all_activities" :compact="true" />
           </div>
           <!-- Activity types -->
           <template v-else>

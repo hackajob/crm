@@ -1,6 +1,9 @@
 <template>
   <div
-    class="activity group flex h-48 cursor-pointer flex-col justify-between gap-2 rounded-md bg-surface-gray-1 px-4 py-3 hover:bg-surface-gray-2"
+    :class="[
+      'activity group flex cursor-pointer flex-col justify-between gap-2 rounded-md bg-surface-gray-1 px-4 py-3 hover:bg-surface-gray-2',
+      compact ? 'max-h-48 overflow-hidden' : 'h-48'
+    ]"
   >
     <div class="flex items-center justify-between">
       <div class="truncate text-lg font-medium text-ink-gray-8">
@@ -29,7 +32,8 @@
       :content="note.content"
       :editable="false"
       editor-class="prose-sm text-p-sm max-w-none text-ink-gray-5 focus:outline-none"
-      class="flex-1 overflow-hidden"
+      class="overflow-hidden"
+      :class="{ 'flex-1': !compact }"
     />
     <div class="mt-1 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2 truncate">
@@ -57,6 +61,7 @@ import { usersStore } from '@/stores/users'
 
 const props = defineProps({
   note: Object,
+  compact: { type: Boolean, default: false },
 })
 
 const notes = defineModel()
