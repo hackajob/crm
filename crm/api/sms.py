@@ -3,6 +3,9 @@ import json
 import frappe
 from frappe import _
 from frappe.utils import get_fullname
+from crm.api.doc import get_assigned_users
+from crm.integrations.twilio.twilio_handler import get_twilio_number_owners
+from frappe.core.doctype.sms_settings.sms_settings import send_sms
 
 
 @frappe.whitelist()
@@ -40,13 +43,9 @@ def get_sms_messages(reference_doctype: str, reference_name: str):
 @frappe.whitelist()
 def send_sms_message(reference_doctype: str, reference_name: str, message: str, to: str):
 	"""Send SMS via Frappe's SMS Settings and create a Communication of medium SMS."""
-	# send actual SMS (best effort)
 	try:
-		from frappe.core.doctype.sms_settings.sms_settings import send_sms
-
 		send_sms([to], message, success_msg=False)
 	except Exception:
-		# don't fail UI on SMS gateway issues; we still log the communication
 		frappe.log_error(frappe.get_traceback(), "CRM SMS send failed")
 
 	user = frappe.session.user
@@ -121,10 +120,63 @@ def receive_sms():
 		"content": body,
 		"status": "Linked" if ref_name else "Open",
 		"sent_or_received": "Received",
-		# Populate sender_full_name so UI can display originating lead's name
 		"sender_full_name": lead_full_name,
 	})
 	comm.insert(ignore_permissions=True)
+
+	# notify UI to refresh any open SMS views
+	if ref_doctype and ref_name:
+		frappe.publish_realtime(
+			"sms_message",
+			{"reference_doctype": ref_doctype, "reference_name": ref_name},
+		)
+
+	recipients = []
+	try:
+		owners = get_twilio_number_owners(to_number) if to_number else {}
+		recipients = list(owners.keys()) if owners else []
+	except Exception:
+		# fallback to assignees on the referenced doc
+		recipients = []
+	if not recipients and ref_doctype and ref_name:
+		recipients = get_assigned_users(ref_doctype, ref_name) or []
+
+	if recipients:
+		owner = frappe.session.user or "Administrator"
+		try:
+			owner_doc = frappe.get_doc("User", {"full_name": "hackajob Bot"})
+			if owner_doc:
+				owner = owner_doc.name
+		except Exception:
+			pass
+		assignee = recipients[0]
+		_prev_user = frappe.session.user
+		try:
+			frappe.set_user(owner)
+			title_name = lead_full_name or from_number
+			task_title = _(f"New SMS from {title_name}")
+			description = _(f"Message: {body}\nFrom: {from_number}\nTo: {to_number}")
+			values = frappe._dict(
+				doctype="CRM Task",
+				assigned_to=assignee,
+				title=task_title,
+				description=description,
+				priority="Medium",
+				start_date=frappe.utils.now_datetime(),
+			)
+			if ref_doctype and ref_name:
+				values.update({
+					"reference_doctype": ref_doctype,
+					"reference_docname": ref_name,
+				})
+			frappe.get_doc(values).insert(ignore_permissions=True)
+		finally:
+			# restore previous session user
+			try:
+				frappe.set_user(_prev_user)
+			except Exception:
+				pass
+
 	frappe.db.commit()
 
 	frappe.local.response["type"] = "binary"
