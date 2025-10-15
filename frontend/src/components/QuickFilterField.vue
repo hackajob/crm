@@ -15,6 +15,17 @@
     :placeholder="filter.label"
     @change.stop="updateFilter(filter, $event.target.value)"
   />
+  <div
+    v-else-if="filter.fieldtype === 'Link' && filter.fieldname?.includes('.')"
+    class="min-w-36 whitespace-nowrap overflow-hidden"
+  >
+    <MultiSelectLink
+      v-model="filter.value"
+      :doctype="filter.options"
+      :placeholder="filter.label"
+      @update:modelValue="(vals) => updateFilter(filter, vals)"
+    />
+  </div>
   <Link
     v-else-if="filter.fieldtype === 'Link'"
     :value="filter.value"
@@ -41,6 +52,7 @@
 </template>
 <script setup>
 import Link from '@/components/Controls/Link.vue'
+import MultiSelectLink from '@/components/Controls/MultiSelectLink.vue'
 import { FormControl, DatePicker, DateTimePicker } from 'frappe-ui'
 import { useDebounceFn } from '@vueuse/core'
 

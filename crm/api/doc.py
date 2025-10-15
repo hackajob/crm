@@ -209,16 +209,63 @@ def get_quick_filters(doctype: str, cached: bool = True):
 
 		fields = []
 
+		# helper to convert a Table MultiSelect field into a dotted child Link pseudo-field
+		def _convert_tms_to_dotted(field):
+			if not field:
+				return None
+			if field.fieldtype != "Table MultiSelect" or not field.options:
+				return field
+			child_meta = frappe.get_meta(field.options)
+			link_field = next((f for f in child_meta.fields if f.fieldtype == "Link"), None)
+			if not link_field:
+				return field
+			dotted_fieldname = f"{field.fieldname}.{link_field.fieldname}"
+			return {
+				"label": _((field.label)),
+				"fieldname": dotted_fieldname,
+				"fieldtype": "Link",
+				"options": link_field.options,
+			}
+
 		for filter in _quick_filters:
 			if filter == "name":
 				fields.append({"label": "Name", "fieldname": "name", "fieldtype": "Data"})
+			elif "." in filter:
+				# already dotted pseudo-field; reconstruct minimal dict using parent field
+				parent_fn = filter.split(".", 1)[0]
+				parent_field = meta.get_field(parent_fn)
+				dotted = _convert_tms_to_dotted(parent_field) if parent_field else None
+				# if conversion failed, fallback to a basic shape preserving the dotted name
+				fields.append(dotted or {"label": _(filter), "fieldname": filter, "fieldtype": "Data"})
 			else:
-				field = next((f for f in meta.fields if f.fieldname == filter), None)
+				field = meta.get_field(filter)
 				if field:
-					fields.append(field)
+					converted = _convert_tms_to_dotted(field)
+					fields.append(converted or field)
 
 	else:
-		fields = [field for field in meta.fields if field.in_standard_filter]
+		# Start from standard filters and convert any Table MultiSelect to dotted pseudo-fields
+		def _convert_tms_to_dotted(field):
+			if not field:
+				return None
+			if field.fieldtype != "Table MultiSelect" or not field.options:
+				return field
+			child_meta = frappe.get_meta(field.options)
+			link_field = next((f for f in child_meta.fields if f.fieldtype == "Link"), None)
+			if not link_field:
+				return field
+			dotted_fieldname = f"{field.fieldname}.{link_field.fieldname}"
+			return {
+				"label": _((field.label)),
+				"fieldname": dotted_fieldname,
+				"fieldtype": "Link",
+				"options": link_field.options,
+			}
+
+		fields = []
+		for field in [f for f in meta.fields if f.in_standard_filter]:
+			converted = _convert_tms_to_dotted(field)
+			fields.append(converted or field)
 
 	for field in fields:
 		options = field.get("options")
@@ -255,10 +302,16 @@ def update_quick_filters(quick_filters: str, old_filters: str, doctype: str):
 
 	# remove old filters
 	for filter in removed_filters:
+		# skip dotted pseudo-fields (child link of Table MultiSelect)
+		if isinstance(filter, str) and "." in filter:
+			continue
 		update_in_standard_filter(filter, doctype, 0)
 
 	# add new filters
 	for filter in new_filters:
+		# skip dotted pseudo-fields (child link of Table MultiSelect)
+		if isinstance(filter, str) and "." in filter:
+			continue
 		update_in_standard_filter(filter, doctype, 1)
 
 

@@ -1,13 +1,16 @@
 <template>
-  <div>
-    <Autocomplete 
-      :options="options" 
-      :placeholder="placeholder" 
-      :multiple="true" 
+  <div class="whitespace-nowrap overflow-hidden">
+    <Autocomplete
+      class="w-full whitespace-nowrap overflow-hidden text-ellipsis"
+      :options="options"
+      :placeholder="placeholder"
+      :multiple="true"
       v-model="selectedOptions"
-      @update:modelValue="handleSelectionChange" />
+      @update:modelValue="handleSelectionChange"
+    />
     <ErrorMessage class="mt-2 pl-2" v-if="error" :message="error" />
   </div>
+  
 </template>
 
 <script setup>
