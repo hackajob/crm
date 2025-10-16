@@ -12,10 +12,12 @@ from crm.fcrm.doctype.crm_service_level_agreement.utils import get_sla
 from crm.fcrm.doctype.crm_status_change_log.crm_status_change_log import (
 	add_status_change_log,
 )
+from crm.utils import parse_phone_number
 
 
 class CRMLead(Document):
 	def before_validate(self):
+		self.format_mobile()
 		self.set_sla()
 
 	def validate(self):
@@ -23,6 +25,7 @@ class CRMLead(Document):
 		self.set_lead_name()
 		self.set_title()
 		self.validate_email()
+		self.format_mobile()
 		self.validate_mobile()
 		if not self.is_new() and self.has_value_changed("lead_owner") and self.lead_owner:
 			self.share_with_agent(self.lead_owner)
@@ -77,12 +80,34 @@ class CRMLead(Document):
 			if self.is_new() or not self.image:
 				self.image = has_gravatar(self.email)
 
+	def format_mobile(self):
+		"""Normalize and format mobile number to E.164 when possible.
+		- Strips spaces, dashes, and brackets as a fallback.
+		- Uses utils.parse_phone_number (default region IN) to format to E.164 when valid.
+		"""
+		if not getattr(self, "mobile_no", None):
+			return
+
+		# Try robust parsing first
+		try:
+			parsed = parse_phone_number(self.mobile_no)
+		except Exception:
+			parsed = {"success": False}
+
+		if parsed and parsed.get("success") and parsed.get("is_valid") and parsed.get("e164_number"):
+			self.mobile_no = parsed.get("e164_number")
+			return
+
+		# Fallback: keep only digits and leading '+' if present
+		cleaned = "".join([c for c in str(self.mobile_no) if c.isdigit() or c == "+"])
+		# Avoid multiple '+' in the middle; ensure '+' only if it was at the start
+		if "+" in cleaned and not cleaned.startswith("+"):
+			cleaned = "+" + cleaned.replace("+", "")
+		self.mobile_no = cleaned
+
 	def validate_mobile(self):
 		if self.mobile_no:
-			if re.search(r"[\s()\-]", self.mobile_no):
-				frappe.throw("Phone number should not contain spaces, parentheses, or hyphens.")
-			# Check that the phone number contains a '+' sign
-			if '+' not in self.mobile_no:
+			if "+" not in self.mobile_no:
 				frappe.throw("Phone number must contain the country prefix starting with +.")
 
 	def assign_agent(self, agent):
