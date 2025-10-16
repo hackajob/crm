@@ -4,6 +4,7 @@ import frappe
 import time
 from frappe import _
 from werkzeug.wrappers import Response
+from twilio.base.exceptions import TwilioRestException
 
 from crm.integrations.api import get_contact_by_phone_number
 
@@ -157,7 +158,52 @@ def update_call_status_info(**kwargs):
 		}
 
 		client = Twilio.get_twilio_client()
-		client.calls(args.ParentCallSid).user_defined_messages.create(content=json.dumps(call_info))
+
+		# Only attempt to post a user defined message when the parent call is in an active state.
+		# Twilio returns 21220 when the call is not in the expected state.
+		if client and parent_call_sid:
+			should_send_message = False
+			try:
+				parent_call = client.calls(parent_call_sid).fetch()
+				# Known active-ish statuses where sending a message is valid
+				active_statuses = {"queued", "ringing", "in-progress", "connecting", "accepted"}
+				if getattr(parent_call, "status", None) in active_statuses:
+					should_send_message = True
+			except TwilioRestException as e:
+				# If fetching fails (e.g., 404), skip sending the message
+				frappe.log_error(
+					title=_("Twilio fetch parent call failed"),
+					message=f"ParentCallSid={parent_call_sid} error={getattr(e, 'msg', str(e))}"
+				)
+				should_send_message = False
+			except Exception as e:
+				# Any unexpected error fetching status; skip send but don't fail webhook
+				frappe.log_error(
+					title=_("Twilio fetch parent call unexpected error"),
+					message=f"ParentCallSid={parent_call_sid} error={e}"
+				)
+				should_send_message = False
+
+			if should_send_message:
+				try:
+					client.calls(parent_call_sid).user_defined_messages.create(content=json.dumps(call_info))
+				except TwilioRestException as e:
+					# Ignore benign state error 21220 and log others
+					if getattr(e, "code", None) == 21220:
+						frappe.log_error(
+							title=_("Twilio user_defined_messages skipped"),
+							message=f"ParentCallSid={parent_call_sid} reason=call not in expected state (21220)"
+						)
+					else:
+						frappe.log_error(
+							title=_("Twilio user_defined_messages failed"),
+							message=f"ParentCallSid={parent_call_sid} code={getattr(e, 'code', '?')} error={getattr(e, 'msg', str(e))}"
+						)
+				except Exception as e:
+					frappe.log_error(
+						title=_("Twilio user_defined_messages unexpected error"),
+						message=f"ParentCallSid={parent_call_sid} error={e}"
+					)
 	except Exception as e:
 		frappe.log_error(title=_("Failed to update Twilio call status"))
 
