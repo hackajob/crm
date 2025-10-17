@@ -142,9 +142,11 @@ def receive_sms():
 		recipients = get_assigned_users(ref_doctype, ref_name) or []
 
 	if recipients:
-		owner = frappe.session.user or "Administrator"
+		owner = "Administrator"
 		try:
-			owner_doc = frappe.get_doc("User", {"full_name": "hackajob Bot"})
+			owner_doc = frappe.get_doc("User", {
+				"full_name": "hackajob Bot"
+			})
 			if owner_doc:
 				owner = owner_doc.name
 		except Exception:
