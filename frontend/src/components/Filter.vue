@@ -71,6 +71,7 @@
                   :is="getValueControl(f)"
                   v-model="f.value"
                   @change="(v) => updateValue(v, f)"
+                  :key="f.fieldname + '-' + f.operator"
                   :placeholder="__('John Doe')"
                 />
               </div>
@@ -104,6 +105,7 @@
                     :is="getValueControl(f)"
                     v-model="f.value"
                     @change="(v) => updateValue(v, f)"
+                    :key="f.fieldname + '-' + f.operator"
                     :placeholder="__('John Doe')"
                   />
                 </div>
@@ -155,6 +157,7 @@
 <script setup>
 import FilterIcon from '@/components/Icons/FilterIcon.vue'
 import Link from '@/components/Controls/Link.vue'
+import MultiSelectLink from '@/components/Controls/MultiSelectLink.vue'
 import Autocomplete from '@/components/frappe-ui/Autocomplete.vue'
 import {
   FormControl,
@@ -240,6 +243,13 @@ function convertFilters(data, allFilters) {
   let f = []
   for (let [key, value] of Object.entries(allFilters)) {
     let field = data.find((f) => f.fieldname === key)
+    
+    // Handle child table fields (dot notation)
+    if (!field && key.includes('.')) {
+      // For child table fields, find by the full fieldname including dot notation
+      field = data.find((f) => f.fieldname === key)
+    }
+    
     if (typeof value !== 'object' || !value) {
       value = ['=', value]
       if (field?.fieldtype === 'Check') {
@@ -359,6 +369,18 @@ function getValueControl(f) {
   const { field, operator } = f
   const { fieldtype, options } = field
   if (operator == 'is') {
+  const isChildLink = f.fieldname && f.fieldname.includes('.')
+  if (isChildLink && typeLink.includes(fieldtype) && options) {
+      return h(MultiSelectLink, {
+        doctype: options,
+        placeholder: `Select ${field.label}...`,
+        'onUpdate:modelValue': (val) => {
+          f.value = val
+          apply()
+        },
+        modelValue: f.value
+      })
+    }
     return h(FormControl, {
       type: 'select',
       options: [
@@ -377,7 +399,21 @@ function getValueControl(f) {
       type: 'select',
       options: timespanOptions,
     })
-  } else if (['like', 'not like', 'in', 'not in'].includes(operator)) {
+  } else if (['like', 'not like'].includes(operator)) {
+    return h(FormControl, { type: 'text' })
+  } else if (['in', 'not in'].includes(operator)) {
+    // For Link fields with 'in'/'not in' operators, use MultiSelectLink
+    if (typeLink.includes(fieldtype) && options) {
+      return h(MultiSelectLink, {
+        doctype: options,
+        placeholder: `Select ${field.label}...`,
+        'onUpdate:modelValue': (val) => {
+          f.value = val
+          apply()
+        },
+        modelValue: f.value
+      })
+    }
     return h(FormControl, { type: 'text' })
   } else if (typeSelect.includes(fieldtype) || typeCheck.includes(fieldtype)) {
     const _options =
@@ -421,11 +457,19 @@ function getDefaultValue(field) {
   return ''
 }
 
-function getDefaultOperator(fieldtype) {
+function getDefaultOperator(fieldtype, fieldname) {
+  // For child table fields (fields with dot notation), always use equals
+  if (fieldname && fieldname.includes('.')) {
+    return 'in'
+  }
+  
   if (typeSelect.includes(fieldtype)) {
     return 'equals'
   }
   if (typeCheck.includes(fieldtype) || typeNumber.includes(fieldtype)) {
+    return 'equals'
+  }
+  if (typeLink.includes(fieldtype)) {
     return 'equals'
   }
   if (typeDate.includes(fieldtype)) {
@@ -448,7 +492,7 @@ function setfilter(data) {
       options: data.options,
     },
     fieldname: data.fieldname,
-    operator: getDefaultOperator(data.fieldtype),
+    operator: getDefaultOperator(data.fieldtype, data.fieldname),
     value: getDefaultValue(data),
   })
   apply()
@@ -460,7 +504,7 @@ function updateFilter(data, index) {
   filters.value.delete(Array.from(filters.value)[index])
   filters.value.add({
     fieldname: data.fieldname,
-    operator: getDefaultOperator(data.fieldtype),
+    operator: getDefaultOperator(data.fieldtype, data.fieldname),
     value: getDefaultValue(data),
     field: {
       label: data.label,
@@ -500,7 +544,15 @@ function updateOperator(event, filter) {
   if (!isSameTypeOperator(oldOperatorValue, newOperatorValue)) {
     filter.value = getDefaultValue(filter.field)
   }
-  if (newOperatorValue === 'is' || newOperatorValue === 'is not') {
+  if (newOperatorValue === 'is') {
+  const { fieldtype, options, fieldname } = filter.field || {}
+  const isChildLink = fieldname && fieldname.includes('.')
+  if (isChildLink && typeLink.includes(fieldtype) && options) {
+      filter.value = Array.isArray(filter.value) ? filter.value : []
+    } else {
+      filter.value = 'set'
+    }
+  } else if (newOperatorValue === 'is not') {
     filter.value = 'set'
   }
   apply()

@@ -714,7 +714,8 @@ function addQuickFilter(f) {
     newQuickFilters.value.push({
       label: f.label,
       fieldname: f.value,
-      fieldtype: f.fieldtype,
+  		fieldtype: f.fieldtype,
+  		options: f.options,
     })
   }
 }
@@ -752,17 +753,23 @@ function saveQuickFilters() {
   updateQuickFilters.fetch()
 }
 
-const quickFilterOptions = computed(() => {
-  let fields = getFields()
-  if (!fields) return []
+// Use backend filterable fields so dotted child multiselects appear
+const filterableFields = createResource({
+  url: 'crm.api.doc.get_filterable_fields',
+  cache: ['filterableFields', props.doctype],
+  params: { doctype: props.doctype },
+})
 
+if (!filterableFields.data) filterableFields.fetch()
+
+const quickFilterOptions = computed(() => {
+  const fields = filterableFields.data || []
   let existingQuickFilters = newQuickFilters.value.map((f) => f.fieldname)
   let restrictedFieldtypes = [
     'Tab Break',
     'Section Break',
     'Column Break',
     'Table',
-    'Table MultiSelect',
     'HTML',
     'Button',
     'Image',
@@ -776,9 +783,10 @@ const quickFilterOptions = computed(() => {
       label: field.label,
       value: field.fieldname,
       fieldtype: field.fieldtype,
+      options: field.options,
     }))
 
-  if (!options.some((f) => f.fieldname === 'name')) {
+  if (!options.some((f) => f.value === 'name')) {
     options.push({
       label: __('Name'),
       value: 'name',
@@ -793,19 +801,27 @@ const quickFilterList = computed(() => {
   let filters = quickFilters.data || []
 
   filters.forEach((filter) => {
-    filter['value'] = filter.fieldtype == 'Check' ? false : ''
+    if (filter.fieldtype == 'Check') {
+      filter['value'] = false
+    } else if (filter.fieldtype === 'Link' && filter.fieldname?.includes('.')) {
+      filter['value'] = []
+    } else {
+      filter['value'] = ''
+    }
     if (list.value.params?.filters[filter.fieldname]) {
       let value = list.value.params.filters[filter.fieldname]
       if (Array.isArray(value)) {
-        if (
-          (['Check', 'Select', 'Link', 'Date', 'Datetime'].includes(
-            filter.fieldtype,
-          ) &&
-            value[0]?.toLowerCase() == 'like') ||
-          value[0]?.toLowerCase() != 'like'
-        )
+        const op = String(value[0] || '').toLowerCase()
+        if (filter.fieldtype === 'Link' && filter.fieldname?.includes('.')) {
+          // expecting ['is', [..]]
+          if (op === 'is') {
+            filter['value'] = Array.isArray(value[1]) ? value[1] : []
+          }
           return
-        filter['value'] = value[1]?.replace(/%/g, '')
+        }
+        if (op === 'like') {
+          filter['value'] = (value[1] || '').toString().replace(/%/g, '')
+        }
       } else if (typeof value == 'boolean') {
         filter['value'] = value
       } else {
@@ -840,7 +856,17 @@ function applyQuickFilter(filter, value) {
   let filters = { ...list.value.params.filters }
   let field = filter.fieldname
   if (value) {
-    if (
+    if (filter.fieldtype === 'Link' && field?.includes('.')) {
+      // child multiselect quick filter uses 'is' operator with array
+      const arr = Array.isArray(value) ? value : [value]
+      if (!arr.length) {
+        delete filters[field]
+        filter['value'] = []
+        updateFilter(filters)
+        return
+      }
+      filters[field] = ['is', arr]
+    } else if (
       ['Check', 'Select', 'Link', 'Date', 'Datetime'].includes(filter.fieldtype)
     ) {
       filters[field] = value
@@ -850,7 +876,7 @@ function applyQuickFilter(filter, value) {
     filter['value'] = value
   } else {
     delete filters[field]
-    filter['value'] = ''
+  filter['value'] = field?.includes('.') && filter.fieldtype === 'Link' ? [] : ''
   }
   updateFilter(filters)
 }
@@ -863,6 +889,14 @@ function updateFilter(filters) {
   list.value.params = defaultParams.value
   list.value.params.filters = filters
   view.value.filters = filters
+  if (!Object.keys(filters || {}).length) {
+    const qf = quickFilters.data || []
+    qf.forEach((f) => {
+      if (f.fieldtype === 'Link' && f.fieldname?.includes('.')) {
+        f.value = []
+      }
+    })
+  }
   list.value.reload()
 
   if (!route.query.view) {

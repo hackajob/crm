@@ -7,12 +7,17 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
+const emit = defineEmits(['loaded'])
 
 const props = defineProps({
   content: {
     type: String,
     required: true,
+  },
+  visible: {
+    type: Boolean,
+    default: true,
   },
 })
 
@@ -111,6 +116,7 @@ const htmlContent = `
 <head>
   <style>
     ${css}
+  html, body { margin: 0; padding: 0; }
     :root {
       --bg-surface-gray-3: #ededed;
       --bg-surface-gray-4: #e2e2e2;
@@ -152,6 +158,8 @@ const htmlContent = `
     .email-content {
         word-break: break-word;
     }
+  .email-content > :first-child { margin-top: 0; }
+  .email-content > :last-child { margin-bottom: 0; }
     .email-content
         :is(:where(table):not(:where([class~='not-prose'], [class~='not-prose']
             *))) {
@@ -239,17 +247,75 @@ watch(iframeRef, (iframe) => {
       let theme = document.documentElement.getAttribute('data-theme')
       parent.setAttribute('data-theme', theme)
 
-      iframe.style.height = parent.offsetHeight + 1 + 'px'
+      // Initial size
+      adjustHeight()
+
+      // Re-adjust on image loads (images often load after onload due to srcdoc)
+      const imgs = emailContent.querySelectorAll('img')
+      imgs.forEach((img) => {
+        if (!img.complete) {
+          img.addEventListener(
+            'load',
+            () => setTimeout(() => adjustHeight(), 0),
+            { once: true },
+          )
+        }
+      })
+
+      // Re-adjust after fonts load if supported
+      try {
+        const doc = iframe.contentWindow.document
+        doc?.fonts?.ready?.then?.(() => setTimeout(() => adjustHeight(), 0))
+      } catch (_) {}
 
       let replyCollapsers = emailContent.querySelectorAll('.replyCollapser')
       if (replyCollapsers.length) {
         replyCollapsers.forEach((replyCollapser) => {
           replyCollapser.addEventListener('change', () => {
-            iframe.style.height = parent.offsetHeight + 1 + 'px'
+            adjustHeight()
           })
         })
       }
+
+  // Notify parent that iframe content is laid out
+  emit('loaded')
     }
   }
 })
+function adjustHeight() {
+  const iframe = iframeRef.value
+  if (!iframe) return
+  try {
+    const doc = iframe.contentWindow?.document
+    const emailContent = doc?.querySelector('.email-content')
+    if (!emailContent) return
+    const html = doc.documentElement
+    const body = doc.body
+    let theme = document.documentElement.getAttribute('data-theme')
+    html?.setAttribute('data-theme', theme || '')
+
+    const rectH = Math.ceil(emailContent.getBoundingClientRect().height) || 0
+    const candidates = [
+      emailContent.scrollHeight,
+      body?.scrollHeight,
+      html?.scrollHeight,
+      rectH,
+    ].filter((v) => typeof v === 'number' && v > 0)
+    const height = (candidates.length ? Math.max(...candidates) : 0) + 1
+    iframe.style.height = height > 0 ? height + 'px' : 'auto'
+  } catch (_) {
+    // ignore cross-origin or timing errors
+  }
+}
+
+watch(
+  () => props.visible,
+  async (v) => {
+    if (v) {
+      await nextTick()
+      // give layout a tick if becoming visible after being hidden
+      setTimeout(() => adjustHeight(), 0)
+    }
+  },
+)
 </script>

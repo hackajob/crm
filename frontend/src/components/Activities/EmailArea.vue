@@ -48,7 +48,7 @@
       </div>
     </div>
     <div class="flex flex-col gap-1 text-base leading-5 text-ink-gray-8">
-      <div>{{ activity.data.subject }}</div>
+      <div v-if="!hideSubject">{{ activity.data.subject }}</div>
       <div>
         <span class="mr-1 text-ink-gray-5"> {{ __('To') }}: </span>
         <span>{{ activity.data.recipients }}</span>
@@ -64,8 +64,8 @@
         <span v-if="activity.data.bcc">{{ activity.data.bcc }}</span>
       </div>
     </div>
-    <div class="border-0 border-t mt-3 mb-1 border-outline-gray-modals" />
-    <EmailContent :content="activity.data.content" />
+  <div class="border-0 border-t mt-3 mb-1 border-outline-gray-modals" />
+  <EmailContent :content="activity.data.content" :visible="visible" @loaded="emit('loaded')" />
     <div v-if="activity.data?.attachments?.length" class="flex flex-wrap gap-2">
       <AttachmentItem
         v-for="a in activity.data.attachments"
@@ -84,10 +84,13 @@ import EmailContent from '@/components/Activities/EmailContent.vue'
 import { Badge, Tooltip } from 'frappe-ui'
 import { timeAgo, formatDate } from '@/utils'
 import { computed } from 'vue'
+const emit = defineEmits(['loaded'])
 
 const props = defineProps({
   activity: Object,
   emailBox: Object,
+  hideSubject: { type: Boolean, default: false },
+  visible: { type: Boolean, default: true },
 })
 
 function reply(email, reply_all = false) {

@@ -19,3 +19,4 @@ def delete_lead_and_links(name):
 			frappe.delete_doc(doctype, doc.name)
 
 	frappe.delete_doc('CRM Lead', name)
+	frappe.db.commit()

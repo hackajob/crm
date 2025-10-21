@@ -14,7 +14,7 @@
     }"
     :placeholder="placeholder"
     :editable="editable"
-    :extensions="[CustomParagraph]"
+  :extensions="[CustomParagraph, Image]"
   >
     <template #top>
       <div class="flex flex-col gap-3">
@@ -185,8 +185,14 @@ import { TextEditorBubbleMenu, TextEditor, FileUploader, call } from 'frappe-ui'
 import { capture } from '@/telemetry'
 import { validateEmail } from '@/utils'
 import Paragraph from '@tiptap/extension-paragraph'
+import { Image } from '@tiptap/extension-image'
 import { EditorContent } from '@tiptap/vue-3'
 import { ref, computed, nextTick } from 'vue'
+import {
+  hasSignature,
+  appendSignatureToHTML,
+  trimTrailingEmptyParas,
+} from '@/utils/signature'
 
 const props = defineProps({
   placeholder: {
@@ -203,7 +209,7 @@ const props = defineProps({
   },
   subject: {
     type: String,
-    default: __('Email from Lead'),
+    default: '',
   },
   editorProps: {
     type: Object,
@@ -277,8 +283,38 @@ async function applyEmailTemplate(template) {
   }
 
   if (template.response) {
-    content.value = data.message
-    editor.value.commands.setContent(data.message)
+    let base = data.message || ''
+    
+    base = trimTrailingEmptyParas(base)
+
+    // Append cleaned signature only if the template doesn't include one
+    let imgNodes = []
+    const hasSig = hasSignature(base)
+    if (!hasSig) {
+      const userSig = await call('crm.api.get_user_signature')
+      if (userSig) {
+        const res = appendSignatureToHTML(base, userSig)
+        base = res.html
+        imgNodes = res.imgNodes || []
+      }
+    }
+
+    content.value = base
+    editor.value.commands.setContent(base)
+
+    // Fallback: if schema drops <img>, insert image nodes with preserved attrs
+    const hasImg = /<img\b/i.test(editor.value.getHTML())
+    if (!hasImg && imgNodes.length) {
+      imgNodes.forEach(({ src, alt, width, height, style, class: klass }) => {
+        const attrs = { src }
+        if (alt) attrs.alt = alt
+        if (width) attrs.width = width
+        if (height) attrs.height = height
+        if (style) attrs.style = style
+        if (klass) attrs.class = klass
+        editor.value.commands.insertContent({ type: 'image', attrs })
+      })
+    }
   }
   showEmailTemplateSelectorModal.value = false
   capture('email_template_applied', { doctype: props.doctype })
@@ -349,3 +385,29 @@ const textEditorMenuButtons = [
   ],
 ]
 </script>
+
+<style>
+/* Hide the caption input field - Global styles to override component styles */
+[data-node-view-wrapper] input[placeholder="Add caption"] {
+  display: none !important;
+}
+
+/* Target by the exact class combination from your HTML */
+[data-node-view-wrapper] input.w-full.text-center.bg-transparent.text-sm.text-ink-gray-6.h-7.border-none.placeholder-ink-gray-4 {
+  display: none !important;
+}
+
+/* More general approach - hide any input in the image node wrapper */
+[data-node-view-wrapper] > div > input {
+  display: none !important;
+}
+
+/* Alternative using deep selector if scoped is needed */
+:deep([data-node-view-wrapper] input[placeholder="Add caption"]) {
+  display: none !important;
+}
+
+:deep([data-node-view-wrapper] input.placeholder-ink-gray-4) {
+  display: none !important;
+}
+</style>

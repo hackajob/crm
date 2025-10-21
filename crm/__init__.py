@@ -51,5 +51,23 @@ def _patch_notification_settings():
 			custom_is_email_notifications_enabled_for_type,
 		)
 
+def _patch_sms_settings():
+	# Replace Frappe's send_via_gateway with our per-user From override
+	from crm.overrides.sms_settings import custom_send_via_gateway, _original_fn
+	from frappe.core.doctype.sms_settings import sms_settings as _frappe_sms_module
+
+	try:
+		_frappe_sms_module.send_via_gateway = custom_send_via_gateway
+	except Exception:
+		pass
+
+	# Rebind any stale imported-by-name references globally
+	_rebind_imported_symbol(
+		"send_via_gateway",
+		_original_fn,
+		custom_send_via_gateway,
+	)
+
 _patch_email()
 _patch_notification_settings()
+_patch_sms_settings()

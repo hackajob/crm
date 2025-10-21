@@ -1,4 +1,5 @@
 import json
+import re
 
 import frappe
 from frappe import _
@@ -103,10 +104,27 @@ def get_filterable_fields(doctype: str):
 			field["name"] = field.get("fieldname")
 			res.append(field)
 
+	# Add Table MultiSelect child table Link fields (similar to Frappe Desk logic)
+	meta = frappe.get_meta(doctype)
+	for field in meta.fields:
+		if field.fieldtype == "Table MultiSelect" and field.options:
+			child_meta = frappe.get_meta(field.options)
+			# Find the Link field in child table
+			link_field = next((f for f in child_meta.fields if f.fieldtype == "Link"), None)
+			if link_field:
+				# Add as filterable field
+				res.append({
+					"label": f"{_(field.label)}",
+					"fieldname": f"{field.fieldname}.{link_field.fieldname}",
+					"fieldtype": "Link",
+					"options": link_field.options,
+					"name": f"{field.fieldname}.{link_field.fieldname}",
+					"value": f"{field.fieldname}.{link_field.fieldname}",
+				})
+
 	for field in res:
 		field["label"] = _(field.get("label"))
 		field["value"] = field.get("fieldname")
-
 	return res
 
 
@@ -191,16 +209,63 @@ def get_quick_filters(doctype: str, cached: bool = True):
 
 		fields = []
 
+		# helper to convert a Table MultiSelect field into a dotted child Link pseudo-field
+		def _convert_tms_to_dotted(field):
+			if not field:
+				return None
+			if field.fieldtype != "Table MultiSelect" or not field.options:
+				return field
+			child_meta = frappe.get_meta(field.options)
+			link_field = next((f for f in child_meta.fields if f.fieldtype == "Link"), None)
+			if not link_field:
+				return field
+			dotted_fieldname = f"{field.fieldname}.{link_field.fieldname}"
+			return {
+				"label": _((field.label)),
+				"fieldname": dotted_fieldname,
+				"fieldtype": "Link",
+				"options": link_field.options,
+			}
+
 		for filter in _quick_filters:
 			if filter == "name":
 				fields.append({"label": "Name", "fieldname": "name", "fieldtype": "Data"})
+			elif "." in filter:
+				# already dotted pseudo-field; reconstruct minimal dict using parent field
+				parent_fn = filter.split(".", 1)[0]
+				parent_field = meta.get_field(parent_fn)
+				dotted = _convert_tms_to_dotted(parent_field) if parent_field else None
+				# if conversion failed, fallback to a basic shape preserving the dotted name
+				fields.append(dotted or {"label": _(filter), "fieldname": filter, "fieldtype": "Data"})
 			else:
-				field = next((f for f in meta.fields if f.fieldname == filter), None)
+				field = meta.get_field(filter)
 				if field:
-					fields.append(field)
+					converted = _convert_tms_to_dotted(field)
+					fields.append(converted or field)
 
 	else:
-		fields = [field for field in meta.fields if field.in_standard_filter]
+		# Start from standard filters and convert any Table MultiSelect to dotted pseudo-fields
+		def _convert_tms_to_dotted(field):
+			if not field:
+				return None
+			if field.fieldtype != "Table MultiSelect" or not field.options:
+				return field
+			child_meta = frappe.get_meta(field.options)
+			link_field = next((f for f in child_meta.fields if f.fieldtype == "Link"), None)
+			if not link_field:
+				return field
+			dotted_fieldname = f"{field.fieldname}.{link_field.fieldname}"
+			return {
+				"label": _((field.label)),
+				"fieldname": dotted_fieldname,
+				"fieldtype": "Link",
+				"options": link_field.options,
+			}
+
+		fields = []
+		for field in [f for f in meta.fields if f.in_standard_filter]:
+			converted = _convert_tms_to_dotted(field)
+			fields.append(converted or field)
 
 	for field in fields:
 		options = field.get("options")
@@ -237,10 +302,16 @@ def update_quick_filters(quick_filters: str, old_filters: str, doctype: str):
 
 	# remove old filters
 	for filter in removed_filters:
+		# skip dotted pseudo-fields (child link of Table MultiSelect)
+		if isinstance(filter, str) and "." in filter:
+			continue
 		update_in_standard_filter(filter, doctype, 0)
 
 	# add new filters
 	for filter in new_filters:
+		# skip dotted pseudo-fields (child link of Table MultiSelect)
+		if isinstance(filter, str) and "." in filter:
+			continue
 		update_in_standard_filter(filter, doctype, 1)
 
 
@@ -316,6 +387,99 @@ def get_data(
 		default_filters = frappe.parse_json(default_filters)
 		filters.update(default_filters)
 
+	# Handle child table filters (Table MultiSelect fields)
+	processed_filters = {}
+	child_table_filters = {}
+	
+	for key, value in filters.items():
+		if "." in key:
+			# This is a child table filter like "candidate_match_title.value"
+			parent_field, child_field = key.split(".", 1)
+			if parent_field not in child_table_filters:
+				child_table_filters[parent_field] = {}
+			child_table_filters[parent_field][child_field] = value
+		else:
+			processed_filters[key] = value
+	
+	# Convert child table filters to proper format
+	meta = frappe.get_meta(doctype)
+	for parent_field, child_filters in child_table_filters.items():
+		field_meta = meta.get_field(parent_field)
+		if field_meta and field_meta.fieldtype == "Table MultiSelect":
+			child_doctype = field_meta.options
+			for child_field, child_value in child_filters.items():
+				# Get parent records that have matching child records
+				if isinstance(child_value, list):
+					operator, value = child_value[0], child_value[1]
+				else:
+					operator, value = "=", child_value
+
+				# Semantics change:
+				# * operator == "in" with list => OR (union) of parents having ANY selected value
+				# * operator == "is" with list => AND (intersection) of parents having ALL selected values
+				# * fallback (single value / other ops) => original behavior
+				if operator == "in" and isinstance(value, list):
+					# OR logic: collect all parents matching any value
+					union_set = set()
+					for single_value in value:
+						child_records = frappe.get_all(
+							child_doctype,
+							filters={child_field: single_value, "parenttype": doctype},
+							fields=["parent"],
+							distinct=True
+						)
+						for r in child_records:
+							union_set.add(r.parent)
+					processed_filters["name"] = ["in", list(union_set) or []]
+				elif operator == "is" and isinstance(value, list):
+					# AND logic moved here: parents must have all selected values
+					parent_names_sets = []
+					for single_value in value:
+						child_records = frappe.get_all(
+							child_doctype,
+							filters={child_field: single_value, "parenttype": doctype},
+							fields=["parent"],
+							distinct=True
+						)
+						if child_records:
+							parent_names_sets.append(set(r.parent for r in child_records))
+						else:
+							parent_names_sets.append(set())
+					if parent_names_sets:
+						intersection = parent_names_sets[0]
+						for name_set in parent_names_sets[1:]:
+							intersection = intersection.intersection(name_set)
+						processed_filters["name"] = ["in", list(intersection) or []]
+				else:
+					# Single value or other operator
+					child_records = frappe.get_all(
+						child_doctype,
+						filters={child_field: [operator, value], "parenttype": doctype},
+						fields=["parent"],
+						distinct=True
+					)
+					if child_records:
+						parent_names = [r.parent for r in child_records]
+						processed_filters["name"] = ["in", parent_names]
+	
+	filters = processed_filters
+
+	# Normalize LIKE patterns server-side for phone-like fields without mutating client input
+	def _is_phone_field(fieldname: str) -> bool:
+		return bool(fieldname and re.match(r"(?i)(from|to|phone|mobile|telephone|contact_no|contact|tel)", fieldname))
+
+	for key, value in list(filters.items()):
+		if isinstance(value, list) and len(value) == 2:
+			op, val = value
+			if isinstance(op, str) and op.upper() in ("LIKE", "NOT LIKE") and isinstance(val, str):
+				if _is_phone_field(key):
+					# For phone-like fields: preserve leading '+' if present and strip non-digits
+					trimmed = val.strip()
+					keep_plus = trimmed.startswith("+")
+					digits = re.sub(r"\D+", "", val)
+					if digits:
+						normalized = ("+" if keep_plus else "") + digits
+						filters[key] = [op, f"%{normalized}%"]
 	is_default = True
 	data = []
 	_list = get_controller(doctype)
@@ -382,11 +546,21 @@ def get_data(
 					sql_query,
 					as_dict=True
 				)
-				ids = ""
+				ids_str = ""
 				if result:
-					ids = result[0].get("ids")
-				if ids:
-					filters["name"] = ["in", ids]
+					ids_str = (result[0].get("ids") or "").strip()
+				ids_list = [i.strip() for i in ids_str.split(",") if i and i.strip()]
+				if ids_list:
+					existing = filters.get("name")
+					if isinstance(existing, list) and len(existing) == 2 and existing[0] == "in":
+						existing_vals = existing[1]
+						if isinstance(existing_vals, list):
+							combined = list(set(existing_vals).intersection(set(ids_list)))
+						else:
+							combined = []
+						filters["name"] = ["in", combined if combined else "no-results"]
+					else:
+						filters["name"] = ["in", ids_list]
 				else:
 					filters["name"] = ["in", "no-results"]
 

@@ -41,7 +41,9 @@ def on_status_change(doc, status):
 			frappe.set_user(owner)
 
 			if lead:
-				message = "You have a missed call from {0} {1} {2}".format(lead.first_name, lead.last_name, doc.to)
+				message = "You have a missed call from {0} {1} {2}".format(
+					lead.first_name, lead.last_name, doc.get("from")
+				)
 				start_date = frappe.utils.now_datetime()
 				values = frappe._dict(
 					doctype="CRM Task",
@@ -55,7 +57,7 @@ def on_status_change(doc, status):
 				)
 				frappe.get_doc(values).insert(ignore_permissions=True)
 			else:
-				message = "You have a missed call from {0}".format(doc.to)
+				message = "You have a missed call from {0}".format(doc.get("from"))
 				start_date = frappe.utils.now_datetime()
 				values = frappe._dict(
 					doctype="CRM Task",
