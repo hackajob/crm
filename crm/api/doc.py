@@ -207,6 +207,26 @@ def get_quick_filters(doctype: str, cached: bool = True):
 	meta = frappe.get_meta(doctype, cached)
 	quick_filters = []
 
+	# For Communication, only show the Sent/Received quick filter
+	if (doctype or "").lower() == "communication":
+		field = meta.get_field("sent_or_received")
+		if field:
+			options = field.get("options")
+			if field.get("fieldtype") == "Select" and options and isinstance(options, str):
+				options = options.split("\n")
+				options = [{"label": option, "value": option} for option in options]
+				if not any([not option.get("value") for option in options]):
+					options.insert(0, {"label": "", "value": ""})
+			quick_filters.append(
+				{
+					"label": _(field.get("label")),
+					"fieldname": field.get("fieldname"),
+					"fieldtype": field.get("fieldtype"),
+					"options": options,
+				}
+			)
+		return quick_filters
+
 	if global_settings := frappe.db.exists("CRM Global Settings", {"dt": doctype, "type": "Quick Filters"}):
 		_quick_filters = frappe.db.get_value("CRM Global Settings", global_settings, "json")
 		_quick_filters = json.loads(_quick_filters) or []
