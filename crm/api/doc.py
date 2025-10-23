@@ -65,6 +65,10 @@ def get_filterable_fields(doctype: str):
 		"Datetime",
 	]
 
+	# Allow filtering by Code fields specifically for Communication
+	if (doctype or "").lower() == "communication":
+		allowed_fieldtypes.append("Code")
+
 	c = get_controller(doctype)
 	restricted_fields = []
 	if hasattr(c, "get_non_filterable_fields"):
@@ -517,9 +521,10 @@ def get_data(
 			columns = frappe.parse_json(list_view_settings.columns)
 			rows = frappe.parse_json(list_view_settings.rows)
 			is_default = False
-		elif not custom_view or (is_default and hasattr(_list, "default_list_data")):
-			rows = default_rows
-			columns = _list.default_list_data().get("columns")
+		elif not custom_view:
+			if hasattr(_list, "default_list_data"):
+				rows = default_rows
+				columns = _list.default_list_data().get("columns")
 
 		# check if rows has all keys from columns if not add them
 		for column in columns:

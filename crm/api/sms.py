@@ -186,3 +186,72 @@ def receive_sms():
 	frappe.local.response["filecontent"] = """<?xml version="1.0" encoding="UTF-8"?>
 <Response></Response>"""
 	frappe.local.response["content_type"] = "text/xml"
+
+
+@frappe.whitelist()
+def get_agent_numbers(users: str | list | None = None):
+	"""Return mapping of user -> telephony number for given users.
+
+	Picks in order: CRM Telephony Agent.mobile_no (computed primary), then twilio_number,
+	then exotel_number. Returns empty string if none found. Accepts a JSON string or list.
+	"""
+	if not users:
+		return {}
+	if isinstance(users, str):
+		try:
+			users = json.loads(users)
+		except Exception:
+			users = [users]
+	if not isinstance(users, (list, tuple)):
+		users = [users]
+
+	res = {}
+	try:
+		records = frappe.get_all(
+			"CRM Telephony Agent",
+			filters={"user": ["in", list(set(users))]},
+			fields=["user", "mobile_no", "twilio_number", "exotel_number"],
+		)
+		for r in records:
+			number = r.mobile_no or r.twilio_number or r.exotel_number or ""
+			res[r.user] = number
+	except Exception:
+		# fail quietly, return empty mappings
+		pass
+	return res
+
+
+@frappe.whitelist()
+def get_agents_by_numbers(numbers: str | list | None = None):
+	"""Return mapping of twilio_number -> { user, full_name, user_image } for given numbers.
+
+	Accepts a JSON string or list of numbers. Matches CRMTelephonyAgent.twilio_number only (as requested).
+	"""
+	if not numbers:
+		return {}
+	if isinstance(numbers, str):
+		try:
+			numbers = json.loads(numbers)
+		except Exception:
+			numbers = [numbers]
+	if not isinstance(numbers, (list, tuple)):
+		numbers = [numbers]
+
+	# Normalize to strings and unique
+	numbers = [str(n) for n in numbers if n]
+	if not numbers:
+		return {}
+
+	res = {}
+	try:
+		agents = frappe.get_all(
+			"CRM Telephony Agent",
+			filters={"twilio_number": ["in", list(set(numbers))]},
+			fields=["user", "twilio_number"],
+		)
+		for a in agents:
+			full_name, image = frappe.db.get_value("User", a.user, ["full_name", "user_image"]) or (a.user, None)
+			res[a.twilio_number] = {"user": a.user, "full_name": full_name or a.user, "user_image": image}
+	except Exception:
+		pass
+	return res
