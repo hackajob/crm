@@ -27,8 +27,32 @@ def get_notifications():
         if notification.reference_doctype == "CRM Call Log":
             route_name = "Call Logs"
 
+        # When an assignment is created from inbound SMS with no linked lead, route to SMS Logs.
         if route_name == "Lead" and notification.type == "Assignment" and not notification.reference_name:
-            route_name = "Call Logs"
+            if (
+                notification.notification_type_doctype == "CRM Task"
+                and notification.notification_type_doc
+            ):
+                try:
+                    task = frappe.db.get_value(
+                        "CRM Task",
+                        notification.notification_type_doc,
+                        ["title", "description"],
+                        as_dict=True,
+                    )
+                except Exception:
+                    task = None
+
+                title = (task.get("title") if task else "") or ""
+                desc = (task.get("description") if task else "") or ""
+                text = f"{title} {desc}".lower()
+
+                if "sms" in text:
+                    route_name = "SMS Logs"
+                else:
+                    route_name = "Call Logs"
+            else:
+                route_name = "Call Logs"
 
         _notifications.append(
             {

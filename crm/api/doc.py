@@ -65,6 +65,10 @@ def get_filterable_fields(doctype: str):
 		"Datetime",
 	]
 
+	# Allow filtering by Code fields specifically for Communication
+	if (doctype or "").lower() == "communication":
+		allowed_fieldtypes.append("Code")
+
 	c = get_controller(doctype)
 	restricted_fields = []
 	if hasattr(c, "get_non_filterable_fields"):
@@ -202,6 +206,26 @@ def get_doctype_fields_meta(DocField, doctype, allowed_fieldtypes, restricted_fi
 def get_quick_filters(doctype: str, cached: bool = True):
 	meta = frappe.get_meta(doctype, cached)
 	quick_filters = []
+
+	# For Communication, only show the Sent/Received quick filter
+	if (doctype or "").lower() == "communication":
+		field = meta.get_field("sent_or_received")
+		if field:
+			options = field.get("options")
+			if field.get("fieldtype") == "Select" and options and isinstance(options, str):
+				options = options.split("\n")
+				options = [{"label": option, "value": option} for option in options]
+				if not any([not option.get("value") for option in options]):
+					options.insert(0, {"label": "", "value": ""})
+			quick_filters.append(
+				{
+					"label": _(field.get("label")),
+					"fieldname": field.get("fieldname"),
+					"fieldtype": field.get("fieldtype"),
+					"options": options,
+				}
+			)
+		return quick_filters
 
 	if global_settings := frappe.db.exists("CRM Global Settings", {"dt": doctype, "type": "Quick Filters"}):
 		_quick_filters = frappe.db.get_value("CRM Global Settings", global_settings, "json")
@@ -517,9 +541,10 @@ def get_data(
 			columns = frappe.parse_json(list_view_settings.columns)
 			rows = frappe.parse_json(list_view_settings.rows)
 			is_default = False
-		elif not custom_view or (is_default and hasattr(_list, "default_list_data")):
-			rows = default_rows
-			columns = _list.default_list_data().get("columns")
+		elif not custom_view:
+			if hasattr(_list, "default_list_data"):
+				rows = default_rows
+				columns = _list.default_list_data().get("columns")
 
 		# check if rows has all keys from columns if not add them
 		for column in columns:

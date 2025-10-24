@@ -80,6 +80,12 @@ const routes = [
     component: () => import('@/pages/CallLogs.vue'),
   },
   {
+    alias: '/sms-logs',
+    path: '/sms-logs/view/:viewType?',
+    name: 'SMS Logs',
+    component: () => import('@/pages/SmsLogs.vue'),
+  },
+  {
     path: '/welcome',
     name: 'Welcome',
     component: () => import('@/pages/Welcome.vue'),
