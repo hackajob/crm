@@ -87,49 +87,6 @@ const defaultFilters = {
   communication_medium: 'SMS',
 }
 
-// After first load, if default columns/rows are not ideal, set reasonable defaults
-watch(
-  () => smsLogs.value?.data?.columns,
-  (cols) => {
-    if (!smsLogs.value?.data || cols === undefined || cols === null) return
-    const isEmpty = Array.isArray(cols) && cols.length === 0
-    const isFallback = Array.isArray(cols)
-      && cols.length <= 2
-      && cols.map((c) => c.key).includes('name')
-      && cols.map((c) => c.key).includes('modified')
-
-  if (isEmpty || isFallback) {
-      smsLogs.value.params.columns = [
-        { label: 'Sender', type: 'Data', key: 'sender', width: '12rem' },
-        { label: 'Receiver', type: 'Data', key: 'receiver', width: '12rem' },
-        { label: 'From', type: 'Data', key: 'phone_no', width: '12rem' },
-        { label: 'To', type: 'Data', key: 'recipients', width: '12rem' },
-        { label: 'Message', type: 'Text', key: 'content', width: '1fr' },
-        { label: 'Direction', type: 'Data', key: 'sent_or_received', width: '8rem' },
-        { label: 'When', type: 'Datetime', key: 'creation', width: '10rem' },
-      ]
-      smsLogs.value.params.rows = [
-    'name',
-        'creation',
-        'sent_or_received',
-    'sender',
-    'receiver',
-        'phone_no',
-        'recipients',
-        'content',
-        'reference_doctype',
-        'reference_name',
-        '_liked_by',
-      ]
-      // Optionally increase page size for better first paint
-      smsLogs.value.params.page_length = smsLogs.value.params.page_length || 50
-      smsLogs.value.params.page_length_count = smsLogs.value.params.page_length_count || 50
-      smsLogs.value.reload()
-    }
-  },
-  { immediate: false },
-)
-
 const rows = computed(() => {
   if (
     !smsLogs.value?.data?.data ||
@@ -193,40 +150,6 @@ function openFromURL() {
 }
 
 onMounted(() => {
-  // Ensure first load has proper columns/rows so server returns records
-  const primeColumns = () => {
-    const p = smsLogs.value?.params
-    if (!p) return setTimeout(primeColumns, 10)
-    const noCols = !Array.isArray(p.columns) || p.columns.length === 0
-  if (noCols) {
-      p.columns = [
-        { label: 'Sender', type: 'Data', key: 'sender', width: '12rem' },
-        { label: 'Receiver', type: 'Data', key: 'receiver', width: '12rem' },
-        { label: 'From', type: 'Data', key: 'phone_no', width: '12rem' },
-        { label: 'To', type: 'Data', key: 'recipients', width: '12rem' },
-        { label: 'Message', type: 'Text', key: 'content', width: '1fr' },
-        { label: 'Direction', type: 'Data', key: 'sent_or_received', width: '8rem' },
-        { label: 'When', type: 'Datetime', key: 'creation', width: '10rem' },
-      ]
-      p.rows = [
-        'name',
-        'creation',
-        'sent_or_received',
-    'sender',
-    'receiver',
-        'phone_no',
-        'recipients',
-        'content',
-        'reference_doctype',
-        'reference_name',
-        '_liked_by',
-      ]
-      p.page_length = p.page_length || 50
-      p.page_length_count = p.page_length_count || 50
-      smsLogs.value.reload()
-    }
-  }
-  primeColumns()
   openFromURL()
 })
 
