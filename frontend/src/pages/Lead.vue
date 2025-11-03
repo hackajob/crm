@@ -126,6 +126,16 @@
                 />
 
                 <Button
+                  :tooltip="__('Send SMS')"
+                  :icon="SmsIcon"
+                  @click="
+                    doc.mobile_no
+                      ? openSmsBox()
+                      : toast.error(__('No phone number set'))
+                  "
+                />
+
+                <Button
                   :tooltip="__('Send an email')"
                   :icon="Email2Icon"
                   @click="
@@ -476,6 +486,14 @@ function openEmailBox() {
     activities.value.changeTabTo('emails')
   }
   nextTick(() => (activities.value.emailBox.show = true))
+}
+
+function openSmsBox() {
+  let currentTab = tabs.value[tabIndex.value]
+  if (!['SMS', 'Activity'].includes(currentTab.name)) {
+    activities.value.changeTabTo('sms')
+  }
+  nextTick(() => activities.value?.smsBox?.show?.())
 }
 
 function saveChanges(data) {
