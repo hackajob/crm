@@ -1,5 +1,5 @@
 <template>
-  <div class="flex justify-between gap-3 border-t px-4 py-2.5 sm:px-10">
+  <div class="flex justify-between gap-3 border-t px-4 py-2.5 sm:px-10" v-show="!hideHeader">
     <div class="flex gap-1.5">
       <Button
         ref="sendEmailRef"
@@ -103,6 +103,7 @@ const props = defineProps({
     type: String,
     default: 'CRM Lead',
   },
+  hideHeader: { type: Boolean, default: false },
 })
 
 const doc = defineModel()
