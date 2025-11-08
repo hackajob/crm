@@ -482,10 +482,26 @@ function deleteLead() {
 
 function openEmailBox() {
   let currentTab = tabs.value[tabIndex.value]
-  if (!['Emails', 'Comments', 'Activities'].includes(currentTab.name)) {
+  if (!['Emails', 'Comments', 'Activity'].includes(currentTab.name)) {
     activities.value.changeTabTo('emails')
   }
-  nextTick(() => (activities.value.emailBox.show = true))
+  nextTick(() => {
+    activities.value?.smsBox?.hide?.()
+    activities.value.emailBox.show = true
+  })
+}
+
+function openSmsBox() {
+  let currentTab = tabs.value[tabIndex.value]
+  if (!['SMS', 'Activity'].includes(currentTab.name)) {
+    activities.value.changeTabTo('sms')
+  }
+  nextTick(() => {
+    if (activities.value?.emailBox?.show) activities.value.emailBox.show = false
+    if (activities.value?.emailBox?.showComment)
+      activities.value.emailBox.showComment = false
+    activities.value?.smsBox?.show?.()
+  })
 }
 
 function openSmsBox() {
