@@ -84,11 +84,6 @@ const defaultActions = computed(() => {
     },
     {
       icon: h(PhoneIcon, { class: 'h-4 w-4' }),
-      label: __('Log a Call'),
-      onClick: () => props.modalRef.createCallLog(),
-    },
-    {
-      icon: h(PhoneIcon, { class: 'h-4 w-4' }),
       label: __('Make a Call'),
       onClick: () => makeCall(props.doc.mobile_no),
       condition: () => callEnabled.value,
@@ -143,11 +138,6 @@ function openSms(fromDropdown = false) {
 
 const callActions = computed(() => {
   let actions = [
-    {
-      label: __('Log a Call'),
-      icon: 'plus',
-      onClick: () => props.modalRef.createCallLog(),
-    },
     {
       label: __('Make a Call'),
       icon: h(PhoneIcon, { class: 'h-4 w-4' }),
