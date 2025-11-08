@@ -158,6 +158,7 @@
 import FilterIcon from '@/components/Icons/FilterIcon.vue'
 import Link from '@/components/Controls/Link.vue'
 import MultiSelectLink from '@/components/Controls/MultiSelectLink.vue'
+import MultiSelectSelect from '@/components/Controls/MultiSelectSelect.vue'
 import Autocomplete from '@/components/frappe-ui/Autocomplete.vue'
 import {
   FormControl,
@@ -369,8 +370,8 @@ function getValueControl(f) {
   const { field, operator } = f
   const { fieldtype, options } = field
   if (operator == 'is') {
-  const isChildLink = f.fieldname && f.fieldname.includes('.')
-  if (isChildLink && typeLink.includes(fieldtype) && options) {
+    const isChildLink = f.fieldname && f.fieldname.includes('.')
+    if (isChildLink && typeLink.includes(fieldtype) && options) {
       return h(MultiSelectLink, {
         doctype: options,
         placeholder: `Select ${field.label}...`,
@@ -412,6 +413,19 @@ function getValueControl(f) {
           apply()
         },
         modelValue: f.value
+      })
+    }
+    // For Select fields with 'in'/'not in', use MultiSelectSelect
+    if (typeSelect.includes(fieldtype)) {
+      const _options = getSelectOptions(options).map((o) => ({ label: o, value: o }))
+      return h(MultiSelectSelect, {
+        options: _options,
+        placeholder: `Select ${field.label}...`,
+        'onUpdate:modelValue': (val) => {
+          f.value = val
+          apply()
+        },
+        modelValue: f.value,
       })
     }
     return h(FormControl, { type: 'text' })
@@ -545,12 +559,18 @@ function updateOperator(event, filter) {
     filter.value = getDefaultValue(filter.field)
   }
   if (newOperatorValue === 'is') {
-  const { fieldtype, options, fieldname } = filter.field || {}
-  const isChildLink = fieldname && fieldname.includes('.')
-  if (isChildLink && typeLink.includes(fieldtype) && options) {
+    const { fieldtype, options, fieldname } = filter.field || {}
+    const isChildLink = fieldname && fieldname.includes('.')
+    if (isChildLink && typeLink.includes(fieldtype) && options) {
       filter.value = Array.isArray(filter.value) ? filter.value : []
     } else {
       filter.value = 'set'
+    }
+  } else if (['in', 'not in'].includes(newOperatorValue)) {
+    // Initialize arrays for Link and Select multiselects
+    const { fieldtype } = filter.field || {}
+    if (typeLink.includes(fieldtype) || typeSelect.includes(fieldtype)) {
+      filter.value = Array.isArray(filter.value) ? filter.value : []
     }
   } else if (newOperatorValue === 'is not') {
     filter.value = 'set'
