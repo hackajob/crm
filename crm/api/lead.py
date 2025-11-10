@@ -20,3 +20,12 @@ def delete_lead_and_links(name):
 
 	frappe.delete_doc('CRM Lead', name)
 	frappe.db.commit()
+
+@frappe.whitelist()
+def can_delete_lead(name: str) -> bool:
+	"""Return True if current user has Delete permission on the given Lead."""
+	try:
+		doc = frappe.get_doc('CRM Lead', name)
+	except frappe.DoesNotExistError:
+		return False
+	return bool(frappe.has_permission('CRM Lead', doc=doc, ptype='delete'))

@@ -159,6 +159,7 @@
                 />
 
                 <Button
+                  v-if="canDeleteLead.data"
                   :tooltip="__('Delete')"
                   variant="subtle"
                   theme="red"
@@ -304,6 +305,14 @@ const { triggerOnChange, assignees, document, scripts, error } = useDocument(
 )
 
 const doc = computed(() => document.doc || {})
+
+// Permission to delete the current lead
+const canDeleteLead = createResource({
+  url: 'crm.api.lead.can_delete_lead',
+  params: { name: props.leadId },
+  cache: ['can_delete_lead', props.leadId],
+  auto: true,
+})
 
 watch(error, (err) => {
   if (err) {
@@ -502,14 +511,6 @@ function openSmsBox() {
       activities.value.emailBox.showComment = false
     activities.value?.smsBox?.show?.()
   })
-}
-
-function openSmsBox() {
-  let currentTab = tabs.value[tabIndex.value]
-  if (!['SMS', 'Activity'].includes(currentTab.name)) {
-    activities.value.changeTabTo('sms')
-  }
-  nextTick(() => activities.value?.smsBox?.show?.())
 }
 
 function saveChanges(data) {
