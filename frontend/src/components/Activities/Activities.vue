@@ -750,6 +750,7 @@
       v-model="doc"
       v-model:reload="reload_email"
       :doctype="doctype"
+      :hideHeader="title === 'Activity' && smsOpen"
       @scroll="scroll"
     />
     <WhatsAppBox
@@ -763,10 +764,12 @@
     />
     <SmsBox
       ref="smsBox"
-      v-if="title == 'SMS'"
+      v-if="['SMS', 'Activity'].includes(title)"
       v-model="doc"
       :doctype="doctype"
-  @sent="() => { all_activities.reload(); scroll() }"
+      @open="smsOpen = true"
+      @close="smsOpen = false"
+      @sent="() => { smsOpen = false; all_activities.reload(); scroll() }"
     />
   </div>
   <WhatsappTemplateSelectorModal
@@ -1254,6 +1257,7 @@ function timelineIcon(activity_type, is_lead) {
 const emailBox = ref(null)
 const whatsappBox = ref(null)
 const smsBox = ref(null)
+const smsOpen = ref(false)
 
 watch([reload, reload_email], ([reload_value, reload_email_value]) => {
   if (reload_value || reload_email_value) {
@@ -1299,7 +1303,7 @@ const callActions = computed(() => {
   )
 })
 
-defineExpose({ emailBox, all_activities, changeTabTo })
+defineExpose({ emailBox, all_activities, changeTabTo, smsBox })
 </script>
 
 <style scoped>

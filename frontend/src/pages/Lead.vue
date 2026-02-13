@@ -126,6 +126,16 @@
                 />
 
                 <Button
+                  :tooltip="__('Send SMS')"
+                  :icon="SmsIcon"
+                  @click="
+                    doc.mobile_no
+                      ? openSmsBox()
+                      : toast.error(__('No phone number set'))
+                  "
+                />
+
+                <Button
                   :tooltip="__('Send an email')"
                   :icon="Email2Icon"
                   @click="
@@ -149,6 +159,7 @@
                 />
 
                 <Button
+                  v-if="canDeleteLead.data"
                   :tooltip="__('Delete')"
                   variant="subtle"
                   theme="red"
@@ -294,6 +305,14 @@ const { triggerOnChange, assignees, document, scripts, error } = useDocument(
 )
 
 const doc = computed(() => document.doc || {})
+
+// Permission to delete the current lead
+const canDeleteLead = createResource({
+  url: 'crm.api.lead.can_delete_lead',
+  params: { name: props.leadId },
+  cache: ['can_delete_lead', props.leadId],
+  auto: true,
+})
 
 watch(error, (err) => {
   if (err) {
@@ -472,10 +491,26 @@ function deleteLead() {
 
 function openEmailBox() {
   let currentTab = tabs.value[tabIndex.value]
-  if (!['Emails', 'Comments', 'Activities'].includes(currentTab.name)) {
+  if (!['Emails', 'Comments', 'Activity'].includes(currentTab.name)) {
     activities.value.changeTabTo('emails')
   }
-  nextTick(() => (activities.value.emailBox.show = true))
+  nextTick(() => {
+    activities.value?.smsBox?.hide?.()
+    activities.value.emailBox.show = true
+  })
+}
+
+function openSmsBox() {
+  let currentTab = tabs.value[tabIndex.value]
+  if (!['SMS', 'Activity'].includes(currentTab.name)) {
+    activities.value.changeTabTo('sms')
+  }
+  nextTick(() => {
+    if (activities.value?.emailBox?.show) activities.value.emailBox.show = false
+    if (activities.value?.emailBox?.showComment)
+      activities.value.emailBox.showComment = false
+    activities.value?.smsBox?.show?.()
+  })
 }
 
 function saveChanges(data) {
