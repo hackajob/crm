@@ -78,7 +78,8 @@ class CRMLead(Document):
 				self.image = has_gravatar(self.email)
 
 	def validate_mobile(self):
-		if self.mobile_no:
+		# leads saved before this rule existed keep an unprefixed number; only a new value has to pass
+		if self.mobile_no and self.has_value_changed("mobile_no"):
 			if re.search(r"[\s()\-]", self.mobile_no):
 				frappe.throw("Phone number should not contain spaces, parentheses, or hyphens.")
 			# Check that the phone number contains a '+' sign
