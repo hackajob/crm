@@ -83,6 +83,8 @@ jobs:
         run: |
           bench get-app crm $GITHUB_WORKSPACE
           bench setup requirements --dev
+          # google-api-python-client 2.2 imports pkg_resources, dropped in setuptools 82
+          uv pip install "setuptools<82" --python /home/runner/frappe-bench/env/bin/python
           bench new-site --db-root-password root --admin-password admin test_site
           bench --site test_site install-app crm
           bench build
